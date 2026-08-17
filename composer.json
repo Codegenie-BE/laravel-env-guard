@@ -1,0 +1,77 @@
+{
+    "name": "codegenie-be/laravel-env-guard",
+    "description": "Automatically audit Laravel environment variables for missing, unused, duplicate, inconsistent and unsafe usage during development.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "laravel",
+        "environment",
+        "dotenv",
+        "env",
+        "configuration",
+        "guard",
+        "static-analysis",
+        "developer-tools",
+        "codegenie"
+    ],
+    "authors": [
+        {
+            "name": "Codegenie",
+            "homepage": "https://www.codegenie.be"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/Codegenie-BE/laravel-env-guard/issues",
+        "source": "https://github.com/Codegenie-BE/laravel-env-guard"
+    },
+    "require": {
+        "php": "^8.2",
+        "ext-tokenizer": "*",
+        "illuminate/support": "^12.0|^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.10",
+        "laravel/pint": "^1.0",
+        "orchestra/testbench": "^10.0|^11.0",
+        "pestphp/pest": "^3.0|^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Codegenie\\EnvGuard\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Codegenie\\EnvGuard\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Codegenie\\EnvGuard\\EnvGuardServiceProvider"
+            ]
+        }
+    },
+    "scripts": {
+        "analyse": "phpstan analyse --memory-limit=512M",
+        "check": [
+            "@composer validate --strict",
+            "@composer audit --no-interaction",
+            "@format:test",
+            "@analyse",
+            "@test"
+        ],
+        "format": "pint",
+        "format:test": "pint --test",
+        "test": "pest",
+        "test:coverage": "pest --coverage --min=80"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
