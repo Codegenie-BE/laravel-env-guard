@@ -41,12 +41,16 @@ it('detects Vite loadEnv access', function () {
 import { loadEnv } from 'vite';
 const env = loadEnv(mode, process.cwd(), '');
 console.log(env.VITE_HMR_HOST);
-const { VITE_OTHER_KEY } = env;
+console.log(env['DECLARED_BACKEND_KEY']);
+const { VITE_OTHER_KEY, VITE_ALIASED: localName, backend: VITE_FALSE_ALIAS } = env;
+const unrelated = object.VITE_FALSE_POSITIVE;
 JS);
 
-    $result = (new TextEnvironmentScanner)->scan([$path], []);
+    $result = (new TextEnvironmentScanner)->scan([$path], ['DECLARED_BACKEND_KEY']);
+    $keys = array_column($result['usages'], 'key');
 
-    expect(array_column($result['usages'], 'key'))->toContain('VITE_HMR_HOST', 'VITE_OTHER_KEY');
+    expect($keys)->toContain('VITE_HMR_HOST', 'VITE_OTHER_KEY', 'VITE_ALIASED', 'DECLARED_BACKEND_KEY')
+        ->and($keys)->not->toContain('VITE_FALSE_POSITIVE', 'VITE_FALSE_ALIAS');
 
     @unlink($path);
 });
