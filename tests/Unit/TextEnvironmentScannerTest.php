@@ -14,7 +14,7 @@ it('detects Vite, Blade, phpunit and infrastructure usage', function () {
     file_put_contents($vite, "const name = import.meta.env.VITE_APP_NAME;\nconst mode = import.meta.env.MODE;\n");
     file_put_contents($blade, "{{ env('BLADE_KEY') }}\n");
     file_put_contents($phpunit, '<php><env name="TEST_KEY" value="1"/></php>');
-    file_put_contents($compose, "services:\n  app:\n    environment:\n      APP_NAME: \${APP_NAME}\n");
+    file_put_contents($compose, "services:\n  app:\n    environment:\n      APP_NAME: \${APP_NAME:-Laravel}\n");
 
     $result = (new TextEnvironmentScanner)->scan([$vite, $blade, $phpunit, $compose], [
         'VITE_APP_NAME',

@@ -21,3 +21,4 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Token-based PHP environment access analysis that ignores comments and string literals, recognizes fully qualified `\env()` and aliased / fully qualified `Illuminate\Support\Env::get()`, and classifies concatenated keys as dynamic instead of literal.
 - Precise Vite `loadEnv()` tracking that follows the assigned environment object instead of matching unrelated `VITE_*` object properties.
 - Multiline dotenv parsing that ignores assignment-shaped content inside quoted values and still tracks valid `${KEY}` interpolation without retaining values.
+- Additional project-file coverage for `public/index.php` and `phpunit.xml.dist`, plus shell-style infrastructure defaults such as `${APP_NAME:-Laravel}`.

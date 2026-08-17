@@ -91,23 +91,7 @@ final class TextEnvironmentScanner
             }
 
             if ($declaredLookup !== [] && $this->isInfrastructureFile($file)) {
-                if (preg_match_all('/\\$\\{([A-Za-z_][A-Za-z0-9_.-]*)\\}|\\$([A-Za-z_][A-Za-z0-9_.-]*)/', $contents, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
-                    foreach ($matches as $match) {
-                        $key = ($match[1][0] ?? '') !== '' ? $match[1][0] : ($match[2][0] ?? '');
-                        $offset = ($match[1][0] ?? '') !== '' ? $match[1][1] : ($match[2][1] ?? 0);
-
-                        if ($key === '' || ! isset($declaredLookup[$key])) {
-                            continue;
-                        }
-
-                        $result['usages'][] = [
-                            'key' => $key,
-                            'path' => $file,
-                            'line' => substr_count(substr($contents, 0, $offset), "\n") + 1,
-                            'source' => 'project',
-                        ];
-                    }
-                }
+                $this->collectInfrastructureUsages($result['usages'], $contents, $file, $declaredLookup);
             }
         }
 
@@ -174,6 +158,40 @@ final class TextEnvironmentScanner
                     'path' => $file,
                     'line' => substr_count(substr($contents, 0, $absoluteOffset), "\n") + 1,
                     'source' => 'vite-load-env',
+                ];
+            }
+        }
+    }
+
+    /**
+     * @param list<array{key:string, path:string, line:int, source:string}> $target
+     * @param array<string, true> $declaredLookup
+     */
+    private function collectInfrastructureUsages(array &$target, string $contents, string $file, array $declaredLookup): void
+    {
+        $patterns = [
+            '/\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(?::?[-+?])[^}]*)?\}|\$([A-Za-z_][A-Za-z0-9_]*)/',
+            '/\$\{\{\s*env\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (! preg_match_all($pattern, $contents, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
+                continue;
+            }
+
+            foreach ($matches as $match) {
+                $key = ($match[1][0] ?? '') !== '' ? $match[1][0] : ($match[2][0] ?? '');
+                $offset = ($match[1][0] ?? '') !== '' ? $match[1][1] : ($match[2][1] ?? 0);
+
+                if ($key === '' || ! isset($declaredLookup[$key])) {
+                    continue;
+                }
+
+                $target[] = [
+                    'key' => $key,
+                    'path' => $file,
+                    'line' => substr_count(substr($contents, 0, $offset), "\n") + 1,
+                    'source' => 'project',
                 ];
             }
         }
