@@ -139,11 +139,22 @@ final class EnvironmentFileScanner
     /** @param list<array{key:string, line:int}> $target */
     private function appendInterpolations(array &$target, string $value, string $name, int $line): void
     {
-        if (! preg_match_all('/(?<!\\\\)\$\{('.$name.')\}/u', $value, $references)) {
+        if (! preg_match_all('/\$\{('.$name.')\}/u', $value, $references, PREG_OFFSET_CAPTURE)) {
             return;
         }
 
-        foreach ($references[1] as $reference) {
+        foreach ($references[1] as $index => [$reference]) {
+            $offset = $references[0][$index][1];
+            $backslashes = 0;
+
+            for ($position = $offset - 1; $position >= 0 && $value[$position] === '\\'; $position--) {
+                $backslashes++;
+            }
+
+            if ($backslashes % 2 === 1) {
+                continue;
+            }
+
             $target[] = [
                 'key' => $reference,
                 'line' => $line,
@@ -159,22 +170,16 @@ final class EnvironmentFileScanner
         for ($index = 0; $index < $length; $index++) {
             $character = $value[$index];
 
-            if ($quote === "'" && $character === "'") {
+            if ($character === $quote && ! $escaped) {
                 return true;
             }
 
-            if ($quote === '"') {
-                if ($character === '"' && ! $escaped) {
-                    return true;
-                }
-
-                if ($character === '\\') {
-                    $escaped = ! $escaped;
-                    continue;
-                }
-
-                $escaped = false;
+            if ($character === '\\') {
+                $escaped = ! $escaped;
+                continue;
             }
+
+            $escaped = false;
         }
 
         return false;

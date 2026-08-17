@@ -122,13 +122,12 @@ final class TextEnvironmentScanner
         string $pattern,
         string $source,
         ?callable $filter = null,
-        int $matchIndex = 1,
     ): void {
-        if (! preg_match_all($pattern, $contents, $matches, PREG_OFFSET_CAPTURE) || ! isset($matches[$matchIndex])) {
+        if (! preg_match_all($pattern, $contents, $matches, PREG_OFFSET_CAPTURE)) {
             return;
         }
 
-        foreach ($matches[$matchIndex] as [$key, $offset]) {
+        foreach ($matches[1] as [$key, $offset]) {
             if ($filter !== null && ! $filter($key)) {
                 continue;
             }
