@@ -1,0 +1,71 @@
+name: Bug report
+description: Report reproducible incorrect behavior in Laravel Env Guard.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never include `.env` values, tokens, credentials, private URLs, customer data or unredacted private paths. Environment key names are sufficient for reproductions.
+  - type: input
+    id: package_version
+    attributes:
+      label: Package version
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: PHP and Laravel versions
+      placeholder: PHP 8.5 / Laravel 13.x
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04, Windows 11, macOS, etc.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Environment file parsing
+        - PHP env usage detection
+        - Vite or frontend env detection
+        - Reference or comparison file checks
+        - Cache behavior
+        - Laravel boot integration
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Use placeholder values only. Include the smallest relevant file names, key names and source snippets needed to reproduce the issue.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed environment values, tokens, credentials, private URLs, customer data and identifying private paths.
+          required: true
