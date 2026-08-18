@@ -45,3 +45,4 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Metadata cache invalidation now tracks Laravel configuration-cache state and cache path so `configuration-cached` diagnostics cannot become stale across `config:cache` and `config:clear` transitions.
 - Filesystem regression coverage now verifies custom Laravel environment paths and filenames, configured maximum source size, and that symlinked source files are not followed.
 - The exact Composer release archive is now validated for required runtime files, excluded development-only files, strict manifest validity, and installation into a fresh Laravel 13 application.
+- Repository presentation now surfaces the existing Distribution workflow, a concise package tagline and the full scenario model near the top of the README.
