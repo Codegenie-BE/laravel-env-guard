@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - CHANGELOG.md
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish stable release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release version and notes
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="$(sed -nE 's/^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$/\1/p' CHANGELOG.md | head -n 1)"
+
+          if [ -z "$version" ]; then
+            printf 'No released semantic version found in CHANGELOG.md.\n' >&2
+            exit 1
+          fi
+
+          tag="v$version"
+          awk -v version="$version" '
+            $0 ~ "^## \\[" version "\\] - " { capture = 1; next }
+            capture && /^## / { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            printf 'Release notes for %s are empty.\n' "$tag" >&2
+            exit 1
+          fi
+
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+          printf 'tag=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create immutable version tag
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+
+          if git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null; then
+            tagged_commit="$(git rev-list -n 1 "$TAG")"
+
+            if [ "$tagged_commit" != "$GITHUB_SHA" ]; then
+              printf 'Existing tag %s points to %s instead of release commit %s.\n' "$TAG" "$tagged_commit" "$GITHUB_SHA" >&2
+              exit 1
+            fi
+
+            printf 'Tag %s already points to this release commit.\n' "$TAG"
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$TAG" "$GITHUB_SHA" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            printf 'GitHub Release %s already exists.\n' "$TAG"
+            exit 0
+          fi
+
+          gh release create "$TAG" \
+            --verify-tag \
+            --title "$TAG" \
+            --notes-file release-notes.md
+
+      - name: Verify Packagist synchronization
+        env:
+          PACKAGE: codegenie-be/laravel-env-guard
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint="https://repo.packagist.org/p2/${PACKAGE}.json"
+
+          for attempt in $(seq 1 36); do
+            if metadata="$(curl --fail --silent --show-error "$endpoint" 2>/dev/null)"; then
+              if jq --exit-status \
+                --arg package "$PACKAGE" \
+                --arg tag "$TAG" \
+                --arg version "$VERSION" \
+                --arg sha "$GITHUB_SHA" \
+                '(.packages[$package] // []) | any((.version == $tag or .version == $version) and .source.reference == $sha)' \
+                <<< "$metadata" >/dev/null; then
+                printf 'Packagist exposes %s for commit %s.\n' "$TAG" "$GITHUB_SHA"
+                exit 0
+              fi
+            fi
+
+            sleep 5
+          done
+
+          printf 'Packagist did not expose %s for commit %s after repeated public metadata checks.\n' "$TAG" "$GITHUB_SHA" >&2
+          exit 1
