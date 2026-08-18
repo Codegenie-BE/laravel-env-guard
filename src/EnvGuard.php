@@ -743,6 +743,11 @@ final class EnvGuard
         }
 
         $parts[] = 'configuration|'.$this->behaviorConfigurationFingerprint();
+        $parts[] = implode('|', [
+            'configuration-cache',
+            $this->app->configurationIsCached() ? 'cached' : 'uncached',
+            $this->normalizeComparablePath($this->app->getCachedConfigPath()),
+        ]);
         $parts[] = 'runtime-presence|'.$this->runtimePresenceFingerprint();
 
         return hash('sha256', implode("\n", $parts));

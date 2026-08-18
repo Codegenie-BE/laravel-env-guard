@@ -1,0 +1,86 @@
+name: Distribution
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: distribution-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  COMPOSER_CACHE_DIR: ${{ github.workspace }}/../.composer-cache
+  COMPOSER_MAX_PARALLEL_HTTP: 4
+  COMPOSER_PROCESS_TIMEOUT: 0
+  COMPOSER_ROOT_VERSION: dev-main
+
+jobs:
+  distribution:
+    name: Composer archive / PHP 8.5 / Laravel 13
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+          extensions: fileinfo, tokenizer
+
+      - name: Cache Composer downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.COMPOSER_CACHE_DIR }}
+          key: distribution-composer-php-8.5-laravel-13-${{ hashFiles('composer.json') }}
+          restore-keys: |
+            distribution-composer-php-8.5-laravel-13-
+            distribution-composer-
+
+      - name: Build Composer release archive
+        run: composer archive --format=zip --dir=dist --file=laravel-env-guard --no-interaction
+
+      - name: Validate release archive contents
+        shell: bash
+        run: |
+          mkdir -p artifact
+          unzip -q dist/laravel-env-guard.zip -d artifact
+
+          mapfile -t composer_files < <(find artifact -type f -name composer.json -print)
+
+          if [ "${#composer_files[@]}" -ne 1 ]; then
+            printf 'Expected exactly one composer.json in the release archive, found %s.\n' "${#composer_files[@]}" >&2
+            exit 1
+          fi
+
+          package_root="$(dirname "${composer_files[0]}")"
+
+          for required in composer.json src/EnvGuard.php src/EnvGuardServiceProvider.php config/env-guard.php README.md LICENSE.md; do
+            if [ ! -f "$package_root/$required" ]; then
+              printf 'Missing required release file: %s\n' "$required" >&2
+              exit 1
+            fi
+          done
+
+          for excluded in .github tests docs phpstan.neon phpunit.xml .gitattributes .gitignore; do
+            if [ -e "$package_root/$excluded" ]; then
+              printf 'Development-only path leaked into release archive: %s\n' "$excluded" >&2
+              exit 1
+            fi
+          done
+
+          composer --working-dir="$package_root" validate --strict --no-interaction
+          printf 'PACKAGE_ROOT=%s\n' "$package_root" >> "$GITHUB_ENV"
+
+      - name: Install archive into a fresh Laravel application
+        run: php tests/E2E/runner.php --laravel=13 --package-root="$PACKAGE_ROOT"
