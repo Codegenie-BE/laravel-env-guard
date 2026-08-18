@@ -47,7 +47,7 @@ function configurationCacheGuard(string $root): array
     ];
 }
 
-it('invalidates cached findings when Laravel configuration cache state changes', function () {
+it('invalidates cached findings when Laravel configuration cache state changes between processes', function () {
     $root = sys_get_temp_dir().'/env-guard-config-cache-'.bin2hex(random_bytes(5));
 
     foreach (['app', 'bootstrap/cache', 'config', 'public', 'storage'] as $directory) {
@@ -58,27 +58,32 @@ it('invalidates cached findings when Laravel configuration cache state changes',
     file_put_contents($root.'/.env.example', "APP_NAME=\n");
     file_put_contents($root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\n");
 
-    [$app, $guard] = configurationCacheGuard($root);
-
     try {
-        expect($app->configurationIsCached())->toBeFalse();
+        [$uncachedApp, $uncachedGuard] = configurationCacheGuard($root);
 
-        $uncached = $guard->inspect();
-        $cachedConfigPath = $app->getCachedConfigPath();
+        expect($uncachedApp->configurationIsCached())->toBeFalse();
+
+        $uncached = $uncachedGuard->inspect();
+        $cachedConfigPath = $uncachedApp->getCachedConfigPath();
         $bytesWritten = file_put_contents($cachedConfigPath, '<?php return [];');
         clearstatcache(true, $cachedConfigPath);
 
-        expect($bytesWritten)->not->toBeFalse()
-            ->and($app->configurationIsCached())->toBeTrue();
+        expect($bytesWritten)->not->toBeFalse();
 
-        $cached = $guard->inspect();
+        [$cachedApp, $cachedGuard] = configurationCacheGuard($root);
+
+        expect($cachedApp->configurationIsCached())->toBeTrue();
+
+        $cached = $cachedGuard->inspect();
 
         expect(@unlink($cachedConfigPath))->toBeTrue();
         clearstatcache(true, $cachedConfigPath);
 
-        expect($app->configurationIsCached())->toBeFalse();
+        [$clearedApp, $clearedGuard] = configurationCacheGuard($root);
 
-        $cleared = $guard->inspect();
+        expect($clearedApp->configurationIsCached())->toBeFalse();
+
+        $cleared = $clearedGuard->inspect();
 
         expect($uncached['fresh'])->toBeTrue()
             ->and(array_column($uncached['findings'], 'code'))->not->toContain('configuration-cached')
