@@ -36,8 +36,8 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          path = Path('tests/Unit/TextEnvironmentScannerTest.php')
-          lines = path.read_text().splitlines()
+          test = Path('tests/Unit/TextEnvironmentScannerTest.php')
+          lines = test.read_text().splitlines()
           matches = [i for i, line in enumerate(lines) if 'file_put_contents($compose, "# COMMENTED_INFRA:' in line]
           if len(matches) != 1:
               raise SystemExit(f'Expected one compose fixture line, found {len(matches)}')
@@ -54,7 +54,15 @@ jobs:
               'YAML);',
           ]
           lines[index:index + 1] = replacement
-          path.write_text('\n'.join(lines) + '\n')
+          test.write_text('\n'.join(lines) + '\n')
+
+          guard = Path('src/EnvGuard.php')
+          text = guard.read_text()
+          old = '    private function sourceFilesIn(string $directory): RecursiveIteratorIterator\n'
+          new = '    /** @return iterable<int|string, SplFileInfo> */\n    private function sourceFilesIn(string $directory): iterable\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one sourceFilesIn signature, found {text.count(old)}')
+          guard.write_text(text.replace(old, new, 1))
           PY
 
       - name: Syntax check generated PHP
