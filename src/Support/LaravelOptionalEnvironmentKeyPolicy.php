@@ -22,9 +22,13 @@ final class LaravelOptionalEnvironmentKeyPolicy
         }
 
         $declared = [];
+        $referencePaths = $this->referencePaths();
 
         foreach ($this->environmentPaths() as $path) {
-            $scan = $this->environmentFiles->scan($path, true);
+            $scan = $this->environmentFiles->scan(
+                $path,
+                in_array($path, $referencePaths, true),
+            );
 
             foreach (array_keys($scan['keys']) as $key) {
                 $declared[$key] = true;
@@ -44,13 +48,14 @@ final class LaravelOptionalEnvironmentKeyPolicy
     /** @return list<string> */
     private function environmentPaths(): array
     {
-        $paths = [$this->app->environmentFilePath()];
+        $paths = [
+            $this->app->environmentFilePath(),
+            ...$this->referencePaths(),
+        ];
 
-        foreach (['reference_files', 'compare_files'] as $configKey) {
-            foreach ((array) config('env-guard.'.$configKey, []) as $file) {
-                if (is_string($file) && $file !== '') {
-                    $paths[] = $this->resolveEnvironmentPath($file);
-                }
+        foreach ((array) config('env-guard.compare_files', []) as $file) {
+            if (is_string($file) && $file !== '') {
+                $paths[] = $this->resolveEnvironmentPath($file);
             }
         }
 
@@ -68,6 +73,20 @@ final class LaravelOptionalEnvironmentKeyPolicy
         sort($paths);
 
         return $paths;
+    }
+
+    /** @return list<string> */
+    private function referencePaths(): array
+    {
+        $paths = [];
+
+        foreach ((array) config('env-guard.reference_files', ['.env.example']) as $file) {
+            if (is_string($file) && $file !== '') {
+                $paths[] = $this->resolveEnvironmentPath($file);
+            }
+        }
+
+        return array_values(array_unique($paths));
     }
 
     private function resolveEnvironmentPath(string $path): string
