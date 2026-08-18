@@ -1,0 +1,63 @@
+name: cache-parser-ci-hardening
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    name: Apply and validate reviewed hardening
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cache-parser-ci-hardening
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: pcov
+          tools: composer:v2
+
+      - name: Install Laravel 13 development dependencies
+        run: |
+          composer require --dev "laravel/framework:^13.0" "orchestra/testbench:^11.0" --no-update --no-interaction
+          composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Apply reviewed patch
+        run: |
+          git apply --check .github/cache-parser-ci-hardening.patch
+          git apply .github/cache-parser-ci-hardening.patch
+
+      - name: Format
+        run: composer format
+
+      - name: Static analysis
+        run: composer analyse
+
+      - name: Validate package
+        run: composer validate --strict
+
+      - name: Audit dependencies
+        run: composer audit --no-interaction
+
+      - name: Tests and coverage
+        run: composer test:coverage
+
+      - name: Commit validated changes
+        run: |
+          git show origin/main:composer.json > composer.json
+          rm .github/cache-parser-ci-hardening.patch
+          rm .github/workflows/cache-parser-ci-hardening.yml
+          git add -A
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Harden cache invalidation and dotenv parsing"
+          git push origin HEAD:agent/cache-parser-ci-hardening
