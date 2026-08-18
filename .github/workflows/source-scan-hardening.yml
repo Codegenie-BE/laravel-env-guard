@@ -33,6 +33,16 @@ jobs:
       - name: Apply reviewed changes
         run: python .github/source-scan-hardening.py
 
+      - name: Syntax check generated PHP
+        run: |
+          if ! php -l tests/Unit/TextEnvironmentScannerTest.php; then
+            nl -ba tests/Unit/TextEnvironmentScannerTest.php
+            exit 1
+          fi
+          php -l src/EnvGuard.php
+          php -l src/Scanners/PhpEnvironmentScanner.php
+          php -l src/Scanners/TextEnvironmentScanner.php
+
       - name: Format
         run: composer format
 
