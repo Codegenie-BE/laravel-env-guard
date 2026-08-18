@@ -28,8 +28,9 @@ Laravel Env Guard combines key-only environment-file inspection with lightweight
 | duplicate active key in an environment file | Error |
 | key differs only by case | Error |
 | project uses a key not declared in any scanned env file | Warning |
-| active `.env` key is missing from `.env.example` | Warning |
-| `.env.example` active key is missing from the active env file | Warning |
+| active `.env` key is missing from the configured reference files | Warning |
+| used key exists only outside the configured reference files | Warning |
+| active reference key is missing from the active env file | Warning |
 | used key is missing from `.env.testing` or another env file | Warning |
 | declared key appears unused | Warning |
 | dynamic `env()` inside `config/` | Warning |
@@ -105,7 +106,7 @@ The package understands the environment mechanisms used by current Laravel appli
 - `.env.testing`;
 - explicitly configured standalone environment files such as `.env.testing`;
 - optional discovery of additional `.env.*` files for diagnostics without assuming they are complete standalone environments;
-- environment variables supplied by `phpunit.xml`;
+- environment variables supplied by `phpunit.xml` through `<env>` or `<server>`;
 - external/server variables that already satisfy a key;
 - Dotenv `${KEY}` interpolation;
 - Vite `import.meta.env.VITE_*`;
@@ -158,6 +159,8 @@ These are recognized as project environment usage:
 ```js
 const name = import.meta.env.VITE_APP_NAME;
 const url = import.meta.env['VITE_API_URL'];
+const message = `API: ${import.meta.env.VITE_API_URL}`;
+const { VITE_APP_NAME: applicationName } = import.meta.env;
 ```
 
 Vite configuration that loads environment values explicitly is also recognized:
@@ -176,7 +179,7 @@ export default defineConfig(({ mode }) => {
 });
 ```
 
-Built-in Vite values such as `MODE`, `DEV`, `PROD`, `SSR`, and `BASE_URL` are not treated as missing Laravel project keys.
+Built-in Vite values such as `MODE`, `DEV`, `PROD`, `SSR`, and `BASE_URL` are not treated as missing Laravel project keys. References inside comments, ordinary strings, regular-expression literals, or the raw text of a template literal are ignored; executable `${...}` template expressions are scanned.
 
 ## `.env.testing` and `phpunit.xml`
 
@@ -188,7 +191,7 @@ Laravel can use `.env.testing` instead of `.env` during Pest/PHPUnit runs. A tes
 </php>
 ```
 
-When `CACHE_STORE` is absent from `.env.testing` but present in `phpunit.xml`, the guard treats it as supplied for the testing environment.
+When `CACHE_STORE` is absent from `.env.testing` but present as either an `<env>` or `<server>` entry in `phpunit.xml`, the guard treats it as supplied for the testing environment.
 
 Completeness checks apply only to files listed in `compare_files`. Automatic `.env.*` discovery is disabled by default because Vite files such as `.env.local` and `.env.production` may layer on top of `.env` instead of replacing it. Enable discovery when you want diagnostics for additional files, or list a known standalone Laravel environment file explicitly in `compare_files`.
 
@@ -243,7 +246,7 @@ Suppress intentional cases explicitly:
 ],
 ```
 
-The package deliberately prunes `vendor/`, `node_modules/`, `.git/`, `storage/`, and `bootstrap/cache/` even when a configured scan path points at the project root. Scanning dependencies or generated state would create false environment requirements and unnecessary boot-time work.
+The package deliberately prunes `vendor/`, `node_modules/`, `.git/`, `storage/`, and `bootstrap/cache/` even when a configured scan path points at the project root. Scanning dependencies or generated state would create false environment requirements and unnecessary boot-time work. Explicit extensionless project files such as `Dockerfile` are supported, while binary files in configured project directories are skipped.
 
 ## Performance
 
@@ -313,6 +316,7 @@ return [
         'vite.config.ts',
         'vite.config.mts',
         'vite.config.cts',
+        'Dockerfile',
         'compose.yaml',
         'compose.yml',
         'docker-compose.yaml',

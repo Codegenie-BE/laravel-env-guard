@@ -20,7 +20,8 @@ The guard treats the active Laravel environment file and `.env.example` differen
 
 - active assignments in `.env` represent locally provided keys;
 - active and commented assignments in `.env.example` count as documentation;
-- a key present in `.env` but not documented in `.env.example` is reported;
+- a key present in `.env` but not documented in the configured reference files is reported;
+- a key used by the application but declared only in a comparison or discovered env file is still reported as missing from the configured reference files;
 - an active key in `.env.example` that is absent from `.env` is reported unless Laravel can already resolve it from an external environment variable;
 - commented example keys are optional documentation and do not have to exist in `.env`.
 
@@ -38,7 +39,7 @@ When discovery is enabled, additional files are still inspected for key-level di
 
 Laravel uses `.env.testing` instead of `.env` for Pest/PHPUnit or Artisan with `--env=testing` when that file exists.
 
-`phpunit.xml` can also define environment values. When a project key is absent from `.env.testing` but is supplied through `<env name="...">`, the guard does not report it as missing from the testing environment file.
+`phpunit.xml` can also define environment values. When a project key is absent from `.env.testing` but is supplied through `<env name="...">` or `<server name="...">`, the guard does not report it as missing from the testing environment file.
 
 The package itself defaults to `local` only so it does not add a complete project scan to every test application bootstrap. Teams that want automatic test-environment guarding may add `testing` explicitly.
 
@@ -92,7 +93,7 @@ import.meta.env.VITE_APP_NAME
 import.meta.env['VITE_API_URL']
 ```
 
-It also recognizes `VITE_*` values accessed after Vite's `loadEnv()` helper and declared `process.env.KEY` references. Built-in Vite values such as `MODE`, `DEV`, `PROD`, `SSR`, and `BASE_URL` are not treated as missing project keys.
+It also recognizes destructuring from `import.meta.env`, `VITE_*` values accessed after Vite's `loadEnv()` helper, and declared `process.env.KEY` references. Executable expressions inside JavaScript template literals are scanned, while comments, ordinary strings, regular-expression literals, and template-literal text are ignored. Built-in Vite values such as `MODE`, `DEV`, `PROD`, `SSR`, and `BASE_URL` are not treated as missing project keys.
 
 ## 10. Dotenv interpolation
 
@@ -148,7 +149,7 @@ The guard runs when the Laravel application boots. With Octane, queue workers, R
 
 ## 18. Filesystem and performance constraints
 
-Source analysis is limited to application-owned paths, configured project files and a configurable maximum file size. Shell-style infrastructure references such as `${APP_NAME:-Laravel}` are recognized when the key belongs to the project. The result cache stores a metadata fingerprint plus sanitized findings. On the next Laravel bootstrap, unchanged metadata reuses the prior result instead of reparsing source files.
+Source analysis is limited to application-owned paths, configured project files and a configurable maximum file size. Explicit extensionless text files such as `Dockerfile` are supported, while binary files in configured project directories are skipped. Shell-style infrastructure references such as `${APP_NAME:-Laravel}` are recognized when the key belongs to the project. The result cache stores a metadata fingerprint plus sanitized findings. On the next Laravel bootstrap, unchanged metadata reuses the prior result instead of reparsing source files.
 
 Symlinked files are not followed by default, preventing accidental traversal outside the project tree.
 

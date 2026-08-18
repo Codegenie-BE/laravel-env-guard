@@ -211,3 +211,90 @@ it('invalidates cached findings when behavior configuration changes', function (
         ->and($second['fresh'])->toBeTrue()
         ->and(findingCodesFor($second['findings'], 'CONFIG_ONLY'))->toContain('missing-from-example', 'possibly-unused-key');
 });
+
+it('reports used keys documented only outside configured reference files', function () {
+    file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\n");
+    file_put_contents($this->root.'/.env.example', "APP_NAME=\n");
+    file_put_contents($this->root.'/.env.testing', "APP_NAME=\nCOMPARISON_ONLY_TOKEN=testing\n");
+    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\n");
+    file_put_contents($this->root.'/config/services.php', "<?php return ['token' => env('COMPARISON_ONLY_TOKEN')];\n");
+
+    $result = buildEnvGuard($this->root)->inspect();
+    $codes = findingCodesFor($result['findings'], 'COMPARISON_ONLY_TOKEN');
+
+    expect($codes)->toContain('missing-from-reference-file')
+        ->and($codes)->not->toContain('used-but-undeclared', 'missing-from-example');
+});
+
+it('disables reference completeness checks when no reference files are configured', function () {
+    file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\nLOCAL_ONLY=value\n");
+    file_put_contents($this->root.'/.env.testing', "APP_NAME=\n");
+    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\n");
+
+    $result = buildEnvGuard($this->root, ['reference_files' => []])->inspect();
+
+    expect(findingCodesFor($result['findings'], 'LOCAL_ONLY'))->not->toContain(
+        'missing-from-example',
+        'missing-from-reference-file',
+    );
+});
+
+it('avoids per-key documentation cascades when every reference file is missing', function () {
+    file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\n");
+    file_put_contents($this->root.'/.env.testing', "APP_NAME=\n");
+    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\n");
+
+    $result = buildEnvGuard($this->root)->inspect();
+
+    expect(array_column($result['findings'], 'code'))->toContain('missing-reference-file')
+        ->and(findingCodesFor($result['findings'], 'APP_NAME'))->not->toContain(
+            'missing-from-example',
+            'missing-from-reference-file',
+        );
+});
+
+it('reports raw environment access even when the key casing differs', function () {
+    file_put_contents($this->root.'/.env', "PROJECT_TOKEN=value\n");
+    file_put_contents($this->root.'/.env.example', "PROJECT_TOKEN=\n");
+    file_put_contents($this->root.'/.env.testing', "PROJECT_TOKEN=\n");
+    file_put_contents($this->root.'/app/Raw.php', "<?php getenv('project_token');\n");
+
+    $result = buildEnvGuard($this->root)->inspect();
+    $codes = findingCodesFor($result['findings'], 'project_token');
+
+    expect($codes)->toContain('raw-environment-access', 'case-mismatch');
+});
+
+it('scans explicit extensionless text files and skips binary project files', function () {
+    mkdir($this->root.'/bin', 0777, true);
+    file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\nDOCKER_TOKEN=value\nBINARY_TOKEN=value\n");
+    file_put_contents($this->root.'/.env.example', "APP_NAME=\nDOCKER_TOKEN=\nBINARY_TOKEN=\n");
+    file_put_contents($this->root.'/.env.testing', "APP_NAME=\nDOCKER_TOKEN=\nBINARY_TOKEN=\n");
+    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\n");
+    file_put_contents($this->root.'/Dockerfile', "RUN echo \"\$DOCKER_TOKEN\"\n");
+    file_put_contents($this->root.'/bin/tool', "\0\${BINARY_TOKEN}\0");
+
+    $result = buildEnvGuard($this->root, [
+        'project_files' => ['Dockerfile'],
+        'project_directories' => ['bin'],
+    ])->inspect();
+
+    expect(findingCodesFor($result['findings'], 'DOCKER_TOKEN'))->not->toContain('possibly-unused-key')
+        ->and(findingCodesFor($result['findings'], 'BINARY_TOKEN'))->toContain('possibly-unused-key');
+});
+
+it('reports malformed ignore regular expressions without exposing their content', function () {
+    file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\n");
+    file_put_contents($this->root.'/.env.example', "APP_NAME=\n");
+    file_put_contents($this->root.'/.env.testing', "APP_NAME=\n");
+    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\n");
+
+    $result = buildEnvGuard($this->root, ['ignore_patterns' => ['/[invalid/']])->inspect();
+    $matches = array_values(array_filter(
+        $result['findings'],
+        static fn (array $finding): bool => ($finding['code'] ?? null) === 'invalid-ignore-pattern',
+    ));
+
+    expect($matches)->toHaveCount(1)
+        ->and(json_encode($matches))->not->toContain('/[invalid/');
+});

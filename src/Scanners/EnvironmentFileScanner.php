@@ -42,7 +42,13 @@ final class EnvironmentFileScanner
 
         while (($line = fgets($handle)) !== false) {
             $lineNumber++;
-            $candidate = ltrim(rtrim($line, "\r\n"));
+            $line = rtrim($line, "\r\n");
+
+            if ($lineNumber === 1 && str_starts_with($line, "\xEF\xBB\xBF")) {
+                $line = substr($line, 3);
+            }
+
+            $candidate = ltrim($line);
 
             if ($multilineQuote !== null) {
                 $continuation = $candidate;

@@ -61,6 +61,7 @@ return [
         'vite.config.ts',
         'vite.config.mts',
         'vite.config.cts',
+        'Dockerfile',
         'compose.yaml',
         'compose.yml',
         'docker-compose.yaml',
