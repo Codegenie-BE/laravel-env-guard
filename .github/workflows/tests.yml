@@ -136,8 +136,8 @@ jobs:
       - name: Run tests
         run: composer test
 
-  required:
-    name: Required CI
+  ci-gate:
+    name: CI gate
     if: always()
     needs:
       - compatibility
@@ -147,13 +147,25 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Require every CI job to pass
+      - name: Verify every required job succeeded or was intentionally skipped
         env:
-          COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}
-          QUALITY_RESULT: ${{ needs.quality.result }}
-          PORTABILITY_RESULT: ${{ needs.portability.result }}
+          REQUIRED_RESULTS: ${{ toJson(needs) }}
         run: |
-          set -euo pipefail
-          test "$COMPATIBILITY_RESULT" = "success"
-          test "$QUALITY_RESULT" = "success"
-          test "$PORTABILITY_RESULT" = "success"
+          if ! jq --exit-status 'all(.[]; .result == "success" or .result == "skipped")' <<< "$REQUIRED_RESULTS"; then
+            jq --raw-output 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key): \(.value.result)"' <<< "$REQUIRED_RESULTS"
+            exit 1
+          fi
+
+  required-ci-compatibility:
+    name: Required CI
+    if: always()
+    needs:
+      - ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Preserve the current ruleset check during migration
+        env:
+          CI_GATE_RESULT: ${{ needs.ci-gate.result }}
+        run: test "$CI_GATE_RESULT" = "success"
