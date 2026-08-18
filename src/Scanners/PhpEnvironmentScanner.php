@@ -33,7 +33,9 @@ final class PhpEnvironmentScanner
 
             $inConfig = $this->isWithin($file, $configPath);
             $tokens = token_get_all($contents);
-            $this->scanEnvHelpers($result, $tokens, $file, $inConfig);
+            $helpers = $this->scanEnvHelpers($tokens, $file, $inConfig);
+            $result['usages'] = array_merge($result['usages'], $helpers['usages']);
+            $result['dynamic'] = array_merge($result['dynamic'], $helpers['dynamic']);
 
             $facade = $this->scanEnvFacade($tokens, $file, $inConfig);
             $result['usages'] = array_merge($result['usages'], $facade['usages']);
@@ -45,11 +47,19 @@ final class PhpEnvironmentScanner
     }
 
     /**
-     * @param  array{usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>, dynamic:list<array{path:string, line:int, in_config:bool, source:string}>, raw:list<array{key:string, path:string, line:int, source:string}>}  $result
      * @param  array<int, array<int, mixed>|string>  $tokens
+     * @return array{
+     *     usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>,
+     *     dynamic:list<array{path:string, line:int, in_config:bool, source:string}>
+     * }
      */
-    private function scanEnvHelpers(array &$result, array $tokens, string $file, bool $inConfig): void
+    private function scanEnvHelpers(array $tokens, string $file, bool $inConfig): array
     {
+        $result = [
+            'usages' => [],
+            'dynamic' => [],
+        ];
+
         foreach ($tokens as $index => $token) {
             if (! is_array($token)) {
                 continue;
@@ -76,6 +86,8 @@ final class PhpEnvironmentScanner
 
             $this->recordEnvironmentCall($result, $tokens, $openIndex, $file, $token[2], $inConfig, 'env');
         }
+
+        return $result;
     }
 
     /**
@@ -342,7 +354,10 @@ final class PhpEnvironmentScanner
         return null;
     }
 
-    /** @param array<int, array<int, mixed>|string> $tokens */
+    /**
+     * @param  array<int, array<int, mixed>|string>  $tokens
+     * @return array<int, mixed>|string|null
+     */
     private function previousSignificant(array $tokens, int $index): array|string|null
     {
         for ($i = $index - 1; $i >= 0; $i--) {
@@ -358,6 +373,7 @@ final class PhpEnvironmentScanner
         return null;
     }
 
+    /** @param array<int, mixed>|string $token */
     private function tokenIs(array|string $token, int $id): bool
     {
         return is_array($token) && $token[0] === $id;

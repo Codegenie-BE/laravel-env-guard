@@ -9,7 +9,7 @@ final class EnvironmentFileScanner
      *     path:string,
      *     exists:bool,
      *     keys:array<string, array{line:int, commented:bool}>,
-     *     duplicates:list<array{key:string, lines:list<int>>>,
+     *     duplicates:list<array{key:string, lines:list<int>}>,
      *     interpolations:list<array{key:string, line:int}>
      * }
      */

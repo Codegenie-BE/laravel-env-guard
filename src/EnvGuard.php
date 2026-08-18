@@ -232,7 +232,7 @@ final class EnvGuard
             }
 
             $caseMatches = $declaredCaseInsensitive[strtolower($key)] ?? [];
-            $first = $locations[0] ?? [];
+            $first = $locations[0];
 
             if ($caseMatches !== []) {
                 $findings[] = $this->finding(
@@ -240,8 +240,8 @@ final class EnvGuard
                     'case-mismatch',
                     $key,
                     sprintf('Environment key %s differs in case from declared key %s.', $key, implode(' / ', $caseMatches)),
-                    $first['path'] ?? null,
-                    $first['line'] ?? null,
+                    $first['path'],
+                    $first['line'],
                 );
 
                 continue;
@@ -252,8 +252,8 @@ final class EnvGuard
                 'used-but-undeclared',
                 $key,
                 sprintf('Environment key %s is referenced by the project but is not declared in any scanned environment file.', $key),
-                $first['path'] ?? null,
-                $first['line'] ?? null,
+                $first['path'],
+                $first['line'],
             );
         }
 
@@ -605,10 +605,10 @@ final class EnvGuard
 
             $parts[] = implode('|', [
                 $file,
-                $stat['mtime'] ?? 0,
-                $stat['ctime'] ?? 0,
-                $stat['size'] ?? 0,
-                $stat['ino'] ?? 0,
+                $stat['mtime'],
+                $stat['ctime'],
+                $stat['size'],
+                $stat['ino'],
             ]);
         }
 
