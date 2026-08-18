@@ -30,9 +30,9 @@ Values are deliberately not compared. Different environments are expected to hav
 
 Laravel can load `.env.[APP_ENV]` when `APP_ENV` is provided externally or an Artisan command uses `--env`.
 
-The guard uses Laravel's own `environmentFilePath()` and `environmentPath()` so custom environment paths and active files are respected. Existing `.env.*` files are discovered, excluding encrypted and obvious backup/distribution files.
+The guard uses Laravel's own `environmentFilePath()` and `environmentPath()` so custom environment paths and active files are respected. Automatic `.env.*` discovery is disabled by default, because Laravel standalone environment files and Vite's layered `.env.local` / `.env.[mode]` files have different completeness semantics. The active Laravel file is always inspected, while known standalone files such as `.env.testing` are listed explicitly in `compare_files`.
 
-For additional files, keys actually used by the application are checked for presence. This is a warning rather than a blocking error because environment-specific files can intentionally rely on defaults or externally supplied values.
+When discovery is enabled, additional files are still inspected for key-level diagnostics such as duplicates and casing, but missing-key completeness warnings are emitted only for files explicitly listed in `compare_files`.
 
 ## 4. Testing and `.env.testing`
 

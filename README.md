@@ -103,7 +103,8 @@ The package understands the environment mechanisms used by current Laravel appli
 - custom environment directories through `environmentPath()`;
 - `.env.example` documentation, including commented optional assignments;
 - `.env.testing`;
-- additional `.env.[APP_ENV]` files;
+- explicitly configured standalone environment files such as `.env.testing`;
+- optional discovery of additional `.env.*` files for diagnostics without assuming they are complete standalone environments;
 - environment variables supplied by `phpunit.xml`;
 - external/server variables that already satisfy a key;
 - Dotenv `${KEY}` interpolation;
@@ -188,6 +189,8 @@ Laravel can use `.env.testing` instead of `.env` during Pest/PHPUnit runs. A tes
 ```
 
 When `CACHE_STORE` is absent from `.env.testing` but present in `phpunit.xml`, the guard treats it as supplied for the testing environment.
+
+Completeness checks apply only to files listed in `compare_files`. Automatic `.env.*` discovery is disabled by default because Vite files such as `.env.local` and `.env.production` may layer on top of `.env` instead of replacing it. Enable discovery when you want diagnostics for additional files, or list a known standalone Laravel environment file explicitly in `compare_files`.
 
 ## Commented example keys
 
@@ -286,7 +289,7 @@ return [
 
     'reference_files' => ['.env.example'],
     'compare_files' => ['.env.testing'],
-    'discover_environment_files' => true,
+    'discover_environment_files' => false,
 
     'scan_paths' => [
         'app',
@@ -305,7 +308,11 @@ return [
         'phpunit.xml.dist',
         'public/index.php',
         'vite.config.js',
+        'vite.config.mjs',
+        'vite.config.cjs',
         'vite.config.ts',
+        'vite.config.mts',
+        'vite.config.cts',
         'compose.yaml',
         'compose.yml',
         'docker-compose.yaml',

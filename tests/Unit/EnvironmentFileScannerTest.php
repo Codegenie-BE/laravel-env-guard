@@ -61,3 +61,19 @@ ENV);
 
     @unlink($path);
 });
+
+it('matches phpdotenv variable-name rules including quoted and numeric names', function () {
+    $path = tempnam(sys_get_temp_dir(), 'env-guard-');
+    file_put_contents($path, <<<'ENV'
+1ST_KEY=value
+"QUOTED.KEY"=value
+UNICØDE=value
+INVALID-KEY=value
+ENV);
+
+    $result = (new EnvironmentFileScanner)->scan($path);
+
+    expect(array_keys($result['keys']))->toBe(['1ST_KEY', 'QUOTED.KEY', 'UNICØDE']);
+
+    @unlink($path);
+});
