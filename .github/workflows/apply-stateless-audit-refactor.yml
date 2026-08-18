@@ -1,0 +1,168 @@
+name: Apply stateless audit refactor
+
+on:
+  push:
+    branches:
+      - refactor/stateless-audits
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Apply reviewed refactor
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          env_guard = Path('src/EnvGuard.php')
+          text = env_guard.read_text()
+          text = text.replace("    private const CACHE_VERSION = 3;\n\n", "", 1)
+
+          inspect_start = text.index("    /**\n     * @return array{findings:list<array<string, mixed>>, fresh:bool, fingerprint:string}\n     */\n    public function inspect(): array\n")
+          inspect_end = text.index("    /**\n     * @param  list<string>  $sourceFiles", inspect_start)
+          inspect = '''    /**
+           * Inspect the current project state from disk.
+           *
+           * The legacy fresh/fingerprint fields remain for 1.x API compatibility,
+           * but no persistent result cache is read or written.
+           *
+           * @return array{findings:list<array<string, mixed>>, fresh:bool, fingerprint:string}
+           */
+          public function inspect(): array
+          {
+              $findings = $this->scan($this->collectSourceFiles(), $this->environmentPaths());
+
+              return [
+                  'findings' => $findings,
+                  'fresh' => true,
+                  'fingerprint' => hash('sha256', serialize($findings)),
+              ];
+          }
+
+          '''
+          text = text[:inspect_start] + inspect + text[inspect_end:]
+
+          cache_start = text.index("    /** @param list<string> $files */\n    private function fingerprint")
+          cache_end = text.index("    private function runtimeHas", cache_start)
+          text = text[:cache_start] + text[cache_end:]
+          env_guard.write_text(text)
+
+          env_guard_test = Path('tests/Feature/EnvGuardTest.php')
+          text = env_guard_test.read_text()
+          text = text.replace("        'cache_path' => $root.'/storage/env-guard.json',\n", "", 1)
+          test_start = text.index("it('reuses cached findings until relevant file metadata changes'")
+          test_end = text.index("it('invalidates cached findings when runtime environment presence changes'", test_start)
+          replacement = '''it('rescans current files on every inspection without writing persistent findings', function () {
+              file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\\n");
+              file_put_contents($this->root.'/.env.example', "APP_NAME=\\n");
+              file_put_contents($this->root.'/.env.testing', "APP_NAME=\\n");
+              file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\\n");
+
+              $guard = buildEnvGuard($this->root);
+              $first = $guard->inspect();
+
+              file_put_contents($this->root.'/app/Current.php', "<?php env('CURRENT_ONLY_KEY');\\n");
+              $second = $guard->inspect();
+
+              expect($first['fresh'])->toBeTrue()
+                  ->and($second['fresh'])->toBeTrue()
+                  ->and($second['fingerprint'])->not->toBe($first['fingerprint'])
+                  ->and(findingCodesFor($second['findings'], 'CURRENT_ONLY_KEY'))->toContain('env-outside-config', 'used-but-undeclared')
+                  ->and(is_file($this->root.'/storage/env-guard.json'))->toBeFalse();
+          });
+
+          '''
+          text = text[:test_start] + replacement + text[test_end:]
+          env_guard_test.write_text(text)
+
+          e2e = Path('tests/E2E/runner.php')
+          text = e2e.read_text()
+          helper_start = text.index("/** @return list<array<string, mixed>> */\nfunction cachedFindings")
+          helper_end = text.index("function laravelLogContents", helper_start)
+          text = text[:helper_start] + text[helper_end:]
+
+          initial_start = text.index("    $guardCache = ")
+          initial_end = text.index("    file_put_contents(\n        $applicationRoot.DIRECTORY_SEPARATOR.'.env',", initial_start)
+          initial = '''    $legacyGuardCache = $applicationRoot.DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'framework'.DIRECTORY_SEPARATOR.'cache'.DIRECTORY_SEPARATOR.'laravel-env-guard.json';
+              $initial = runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
+
+              if (str_contains($initial['output'], 'used-but-undeclared')) {
+                  throw new RuntimeException('Fresh Laravel console output contains inactive framework-key noise.');
+              }
+
+              foreach (['BCRYPT_ROUNDS', 'BROADCAST_CONNECTION'] as $frameworkOwnedKey) {
+                  if (str_contains($initial['output'], 'possibly-unused-key] '.$frameworkOwnedKey)) {
+                      throw new RuntimeException($frameworkOwnedKey.' was incorrectly reported as unused framework-owned configuration.');
+                  }
+              }
+
+              if (is_file($legacyGuardCache)) {
+                  throw new RuntimeException('Laravel Env Guard created the removed persistent result cache.');
+              }
+
+          '''
+          text = text[:initial_start] + initial + text[initial_end:]
+
+          optional_cache_check = "\n    if (! cachedFindingExists($guardCache, 'missing-from-example', 'LOG_DAILY_DAYS')) {\n        throw new RuntimeException('An actively supplied optional Laravel key was not audited against the reference environment file.');\n    }\n"
+          if optional_cache_check not in text:
+              raise SystemExit('Optional cache assertion block not found')
+          text = text.replace(optional_cache_check, "", 1)
+
+          config_start = text.index("    runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);\n\n    if (in_array('configuration-cached'")
+          config_end = text.index("    fwrite(STDOUT", config_start)
+          config_checks = '''    $uncached = runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
+
+              if (str_contains($uncached['output'], 'configuration-cached')) {
+                  throw new RuntimeException('The guard reported cached Laravel configuration before config:cache ran.');
+              }
+
+              runE2eCommand([PHP_BINARY, 'artisan', 'config:cache', '--no-ansi'], $applicationRoot);
+              $cached = runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
+
+              if (! str_contains($cached['output'], 'configuration-cached')) {
+                  throw new RuntimeException('The guard did not inspect current Laravel configuration-cache state.');
+              }
+
+              runE2eCommand([PHP_BINARY, 'artisan', 'config:clear', '--no-ansi'], $applicationRoot);
+              $cleared = runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
+
+              if (str_contains($cleared['output'], 'configuration-cached')) {
+                  throw new RuntimeException('The guard did not observe the cleared Laravel configuration-cache state.');
+              }
+
+              if (is_file($legacyGuardCache)) {
+                  throw new RuntimeException('Laravel Env Guard persisted a result cache during E2E auditing.');
+              }
+
+          '''
+          text = text[:config_start] + config_checks + text[config_end:]
+          e2e.write_text(text)
+          PY
+
+          php -l src/EnvGuard.php
+          php -l tests/Feature/EnvGuardTest.php
+          php -l tests/E2E/runner.php
+
+      - name: Remove one-time workflow and publish patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/apply-stateless-audit-refactor.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/EnvGuard.php tests/Feature/EnvGuardTest.php tests/E2E/runner.php .github/workflows/apply-stateless-audit-refactor.yml
+          git commit -m 'Remove persistent Env Guard result cache'
+          git push origin HEAD:refactor/stateless-audits
