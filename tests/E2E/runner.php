@@ -107,45 +107,6 @@ function removeE2eDirectory(string $directory): void
     @rmdir($directory);
 }
 
-/** @return list<array<string, mixed>> */
-function cachedFindings(string $cachePath): array
-{
-    if (! is_file($cachePath)) {
-        throw new RuntimeException('Laravel Env Guard did not create its metadata cache.');
-    }
-
-    $payload = json_decode((string) file_get_contents($cachePath), true, 512, JSON_THROW_ON_ERROR);
-    $findings = $payload['findings'] ?? null;
-
-    if (! is_array($findings)) {
-        throw new RuntimeException('Laravel Env Guard metadata cache has no findings array.');
-    }
-
-    return array_values(array_filter($findings, 'is_array'));
-}
-
-/** @return list<string> */
-function cachedFindingCodes(string $cachePath): array
-{
-    return array_values(array_filter(array_map(
-        static fn (array $finding): ?string => is_string($finding['code'] ?? null)
-            ? $finding['code']
-            : null,
-        cachedFindings($cachePath),
-    )));
-}
-
-function cachedFindingExists(string $cachePath, string $code, string $key): bool
-{
-    foreach (cachedFindings($cachePath) as $finding) {
-        if (($finding['code'] ?? null) === $code && ($finding['key'] ?? null) === $key) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
 function laravelLogContents(string $applicationRoot): string
 {
     $contents = '';
@@ -217,21 +178,21 @@ try {
         throw new RuntimeException('Composer symlinked the package instead of testing a copied install.');
     }
 
-    $guardCache = $applicationRoot.DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'framework'.DIRECTORY_SEPARATOR.'cache'.DIRECTORY_SEPARATOR.'laravel-env-guard.json';
+    $legacyGuardCache = $applicationRoot.DIRECTORY_SEPARATOR.'storage'.DIRECTORY_SEPARATOR.'framework'.DIRECTORY_SEPARATOR.'cache'.DIRECTORY_SEPARATOR.'laravel-env-guard.json';
     $initial = runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
 
-    if (in_array('used-but-undeclared', cachedFindingCodes($guardCache), true)) {
-        throw new RuntimeException('A fresh Laravel '.$laravel.' application reported inactive framework config keys as required project variables.');
+    if (str_contains($initial['output'], 'used-but-undeclared')) {
+        throw new RuntimeException('Fresh Laravel console output contains inactive framework-key noise.');
     }
 
     foreach (['BCRYPT_ROUNDS', 'BROADCAST_CONNECTION'] as $frameworkOwnedKey) {
-        if (cachedFindingExists($guardCache, 'possibly-unused-key', $frameworkOwnedKey)) {
+        if (str_contains($initial['output'], 'possibly-unused-key] '.$frameworkOwnedKey)) {
             throw new RuntimeException($frameworkOwnedKey.' was incorrectly reported as unused framework-owned configuration.');
         }
     }
 
-    if (str_contains($initial['output'], 'used-but-undeclared')) {
-        throw new RuntimeException('Fresh Laravel console output contains inactive framework-key noise.');
+    if (is_file($legacyGuardCache)) {
+        throw new RuntimeException('Laravel Env Guard created the removed persistent result cache.');
     }
 
     file_put_contents(
@@ -247,10 +208,6 @@ try {
         || ! str_contains($optional['output'], 'missing-from-example')
         || ! str_contains($optional['output'], 'LOG_DAILY_DAYS')) {
         throw new RuntimeException('An actively supplied optional Laravel key was not reported in Artisan output.');
-    }
-
-    if (! cachedFindingExists($guardCache, 'missing-from-example', 'LOG_DAILY_DAYS')) {
-        throw new RuntimeException('An actively supplied optional Laravel key was not audited against the reference environment file.');
     }
 
     $logs = laravelLogContents($applicationRoot);
@@ -306,24 +263,28 @@ try {
     );
     clearstatcache();
 
-    runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
+    $uncached = runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
 
-    if (in_array('configuration-cached', cachedFindingCodes($guardCache), true)) {
+    if (str_contains($uncached['output'], 'configuration-cached')) {
         throw new RuntimeException('The guard reported cached Laravel configuration before config:cache ran.');
     }
 
     runE2eCommand([PHP_BINARY, 'artisan', 'config:cache', '--no-ansi'], $applicationRoot);
-    runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
+    $cached = runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
 
-    if (! in_array('configuration-cached', cachedFindingCodes($guardCache), true)) {
-        throw new RuntimeException('The guard cache did not invalidate when Laravel configuration became cached.');
+    if (! str_contains($cached['output'], 'configuration-cached')) {
+        throw new RuntimeException('The guard did not inspect current Laravel configuration-cache state.');
     }
 
     runE2eCommand([PHP_BINARY, 'artisan', 'config:clear', '--no-ansi'], $applicationRoot);
-    runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
+    $cleared = runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
 
-    if (in_array('configuration-cached', cachedFindingCodes($guardCache), true)) {
-        throw new RuntimeException('The guard cache did not invalidate when Laravel configuration became uncached.');
+    if (str_contains($cleared['output'], 'configuration-cached')) {
+        throw new RuntimeException('The guard did not observe the cleared Laravel configuration-cache state.');
+    }
+
+    if (is_file($legacyGuardCache)) {
+        throw new RuntimeException('Laravel Env Guard persisted a result cache during E2E auditing.');
     }
 
     fwrite(STDOUT, 'Laravel '.$laravel." E2E scenarios passed.\n");

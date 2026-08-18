@@ -28,7 +28,6 @@ function buildEnvGuard(string $root, array $overrides = []): EnvGuard
         'known_external_keys' => [],
         'ignore_keys' => [],
         'ignore_patterns' => [],
-        'cache_path' => $root.'/storage/env-guard.json',
     ];
 
     foreach ([...$defaults, ...$overrides] as $key => $value) {
@@ -152,7 +151,7 @@ it('prunes dependency and generated directories when the project root is scanned
         );
 });
 
-it('reuses cached findings until relevant file metadata changes', function () {
+it('rescans current files on every inspection without writing persistent findings', function () {
     file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\n");
     file_put_contents($this->root.'/.env.example', "APP_NAME=\n");
     file_put_contents($this->root.'/.env.testing', "APP_NAME=\n");
@@ -160,15 +159,15 @@ it('reuses cached findings until relevant file metadata changes', function () {
 
     $guard = buildEnvGuard($this->root);
     $first = $guard->inspect();
+
+    file_put_contents($this->root.'/app/Current.php', "<?php env('CURRENT_ONLY_KEY');\n");
     $second = $guard->inspect();
 
-    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')]; // changed\n");
-    clearstatcache();
-    $third = $guard->inspect();
-
     expect($first['fresh'])->toBeTrue()
-        ->and($second['fresh'])->toBeFalse()
-        ->and($third['fresh'])->toBeTrue();
+        ->and($second['fresh'])->toBeTrue()
+        ->and($second['fingerprint'])->not->toBe($first['fingerprint'])
+        ->and(findingCodesFor($second['findings'], 'CURRENT_ONLY_KEY'))->toContain('env-outside-config', 'used-but-undeclared')
+        ->and(is_file($this->root.'/storage/env-guard.json'))->toBeFalse();
 });
 
 it('invalidates cached findings when runtime environment presence changes', function () {

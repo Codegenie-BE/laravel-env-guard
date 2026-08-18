@@ -15,8 +15,6 @@ use Throwable;
 
 final class EnvGuard
 {
-    private const CACHE_VERSION = 3;
-
     public function __construct(
         private readonly Application $app,
         private readonly EnvironmentFileScanner $environmentFiles,
@@ -25,41 +23,23 @@ final class EnvGuard
     ) {}
 
     /**
-     * @return array{findings:list<array<string, mixed>>, fresh:bool, fingerprint:string}
-     */
-    public function inspect(): array
-    {
-        $sourceFiles = $this->collectSourceFiles();
-        $environmentPaths = $this->environmentPaths();
-        $packageFiles = [
-            __FILE__,
-            __DIR__.'/EnvGuardServiceProvider.php',
-            __DIR__.'/Scanners/EnvironmentFileScanner.php',
-            __DIR__.'/Scanners/PhpEnvironmentScanner.php',
-            __DIR__.'/Scanners/TextEnvironmentScanner.php',
-            __DIR__.'/../config/env-guard.php',
-        ];
-        $fingerprint = $this->fingerprint(array_values(array_unique(array_merge($sourceFiles, $environmentPaths, $packageFiles))));
-        $cached = $this->readCache();
+ * Inspect the current project state from disk.
+ *
+ * The legacy fresh/fingerprint fields remain for 1.x API compatibility,
+ * but no persistent result cache is read or written.
+ *
+ * @return array{findings:list<array<string, mixed>>, fresh:bool, fingerprint:string}
+ */
+public function inspect(): array
+{
+    $findings = $this->scan($this->collectSourceFiles(), $this->environmentPaths());
 
-        if (($cached['version'] ?? null) === self::CACHE_VERSION
-            && ($cached['fingerprint'] ?? null) === $fingerprint && isset($cached['findings']) && is_array($cached['findings'])) {
-            return [
-                'findings' => array_values($cached['findings']),
-                'fresh' => false,
-                'fingerprint' => $fingerprint,
-            ];
-        }
-
-        $findings = $this->scan($sourceFiles, $environmentPaths);
-        $this->writeCache($fingerprint, $findings);
-
-        return [
-            'findings' => $findings,
-            'fresh' => true,
-            'fingerprint' => $fingerprint,
-        ];
-    }
+    return [
+        'findings' => $findings,
+        'fresh' => true,
+        'fingerprint' => hash('sha256', serialize($findings)),
+    ];
+}
 
     /**
      * @param  list<string>  $sourceFiles
@@ -711,163 +691,6 @@ final class EnvGuard
         return str_starts_with($path, '/')
             || str_starts_with($path, '\\')
             || preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1;
-    }
-
-    /** @param list<string> $files */
-    private function fingerprint(array $files): string
-    {
-        $parts = [];
-
-        foreach ($files as $file) {
-            if (! file_exists($file)) {
-                $parts[] = $file.'|missing';
-
-                continue;
-            }
-
-            $stat = @stat($file);
-
-            if ($stat === false) {
-                $parts[] = $file.'|unreadable';
-
-                continue;
-            }
-
-            $parts[] = implode('|', [
-                $file,
-                $stat['mtime'],
-                $stat['ctime'],
-                $stat['size'],
-                $stat['ino'],
-            ]);
-        }
-
-        $parts[] = 'configuration|'.$this->behaviorConfigurationFingerprint();
-        $parts[] = implode('|', [
-            'configuration-cache',
-            $this->app->configurationIsCached() ? 'cached' : 'uncached',
-            $this->normalizeComparablePath($this->app->getCachedConfigPath()),
-        ]);
-        $parts[] = 'runtime-presence|'.$this->runtimePresenceFingerprint();
-
-        return hash('sha256', implode("\n", $parts));
-    }
-
-    private function behaviorConfigurationFingerprint(): string
-    {
-        $keys = [
-            'scan_paths',
-            'project_files',
-            'project_directories',
-            'reference_files',
-            'compare_files',
-            'discover_environment_files',
-            'max_file_size',
-            'known_external_keys',
-            'ignore_keys',
-            'ignore_patterns',
-        ];
-        $configuration = [];
-
-        foreach ($keys as $key) {
-            $configuration[$key] = config('env-guard.'.$key);
-        }
-
-        return hash('sha256', serialize($configuration));
-    }
-
-    private function runtimePresenceFingerprint(): string
-    {
-        $keys = [];
-
-        foreach ($this->referencePaths() as $path) {
-            $scan = $this->environmentFiles->scan($path, true);
-
-            foreach ($scan['keys'] as $key => $meta) {
-                if (! $meta['commented']) {
-                    $keys[$key] = true;
-                }
-            }
-        }
-
-        ksort($keys);
-        $presence = [];
-
-        foreach (array_keys($keys) as $key) {
-            $presence[$key] = $this->runtimeHas($key);
-        }
-
-        return hash('sha256', serialize($presence));
-    }
-
-    /** @return array<string, mixed> */
-    private function readCache(): array
-    {
-        $path = $this->cachePath();
-
-        if (! is_file($path) || ! is_readable($path)) {
-            return [];
-        }
-
-        $contents = @file_get_contents($path);
-
-        if ($contents === false) {
-            return [];
-        }
-
-        $decoded = json_decode($contents, true);
-
-        return is_array($decoded) ? $decoded : [];
-    }
-
-    /** @param list<array<string, mixed>> $findings */
-    private function writeCache(string $fingerprint, array $findings): void
-    {
-        $path = $this->cachePath();
-        $directory = dirname($path);
-
-        if ((! is_dir($directory) && ! @mkdir($directory, 0700, true)) || ! is_writable($directory)) {
-            return;
-        }
-
-        $payload = json_encode([
-            'version' => self::CACHE_VERSION,
-            'fingerprint' => $fingerprint,
-            'findings' => $findings,
-        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-
-        if ($payload === false) {
-            return;
-        }
-
-        $temporary = $path.'.'.getmypid().'.tmp';
-
-        if (@file_put_contents($temporary, $payload, LOCK_EX) === false) {
-            return;
-        }
-
-        @chmod($temporary, 0600);
-
-        if (@rename($temporary, $path)) {
-            return;
-        }
-
-        if (@copy($temporary, $path)) {
-            @chmod($path, 0600);
-        }
-
-        @unlink($temporary);
-    }
-
-    private function cachePath(): string
-    {
-        $configured = config('env-guard.cache_path');
-
-        if (is_string($configured) && $configured !== '') {
-            return $this->isAbsolutePath($configured) ? $configured : $this->app->basePath($configured);
-        }
-
-        return $this->app->storagePath('framework/cache/laravel-env-guard.json');
     }
 
     private function runtimeHas(string $key): bool
