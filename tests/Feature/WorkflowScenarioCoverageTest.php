@@ -55,6 +55,9 @@ it('publishes immutable stable tags and verifies Packagist synchronization', fun
     foreach ([
         'contents: write',
         'fetch-depth: 0',
+        'git diff --unified=0',
+        'should_release=false',
+        "if: steps.release.outputs.should_release == 'true'",
         'git tag -a "$TAG" "$GITHUB_SHA"',
         'git push origin "$TAG"',
         'gh release create "$TAG"',
@@ -65,6 +68,7 @@ it('publishes immutable stable tags and verifies Packagist synchronization', fun
     }
 
     expect($workflow)
+        ->toContain('No new stable release section was introduced by this changelog update.')
         ->toContain('Existing tag %s points to %s instead of release commit %s.')
         ->toContain('Packagist did not expose %s for commit %s after repeated public metadata checks.');
 
