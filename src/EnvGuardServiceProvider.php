@@ -62,9 +62,8 @@ final class EnvGuardServiceProvider extends ServiceProvider
             return;
         }
 
-        $this->applyInactiveLaravelOptionalKeys();
-
         try {
+            $this->applyInactiveLaravelOptionalKeys();
             $result = $this->app->make(EnvGuard::class)->inspect();
         } catch (Throwable $exception) {
             $this->log('warning', 'Laravel Env Guard could not complete its development audit.', [
