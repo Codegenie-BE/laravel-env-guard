@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * 1'
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -12,6 +19,7 @@ jobs:
   compatibility:
     name: Laravel ${{ matrix.laravel }} / PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -39,10 +47,11 @@ jobs:
             testbench: '^11.0'
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: ${{ matrix.php }}
           coverage: none
@@ -52,7 +61,7 @@ jobs:
         run: composer require --dev "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-update --no-interaction
 
       - name: Install dependencies
-        run: composer update --prefer-dist --no-interaction --no-progress
+        run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
 
       - name: Validate package
         run: composer validate --strict
@@ -61,23 +70,28 @@ jobs:
         run: composer test
 
   quality:
-    name: Quality gates
+    name: Quality gates / PHP 8.5 / Laravel 13
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
-          php-version: '8.4'
+          php-version: '8.5'
           coverage: pcov
           tools: composer:v2
 
       - name: Install Laravel 13 development dependencies
         run: |
           composer require --dev "laravel/framework:^13.0" "orchestra/testbench:^11.0" --no-update --no-interaction
-          composer update --prefer-dist --no-interaction --no-progress
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+
+      - name: Validate package
+        run: composer validate --strict
 
       - name: Audit dependencies
         run: composer audit --no-interaction
@@ -90,3 +104,33 @@ jobs:
 
       - name: Coverage
         run: composer test:coverage
+
+  portability:
+    name: Portability / ${{ matrix.os }} / PHP 8.5 / Laravel 13
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+
+      - name: Install Laravel 13 development dependencies
+        run: |
+          composer require --dev "laravel/framework:^13.0" "orchestra/testbench:^11.0" --no-update --no-interaction
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+
+      - name: Run tests
+        run: composer test
