@@ -17,12 +17,18 @@ return [
         'local',
     ],
 
+    /*
+    | A full static project audit is useful for Artisan and development tooling,
+    | but not on every normal HTTP request. Disable this only when intentional.
+    */
+    'console_only' => true,
+
     /* Throw only for findings that are deterministic code/configuration bugs. */
     'fail_on_error' => true,
 
     /*
     | Show current findings on STDERR whenever a guarded Artisan command boots.
-    | Logging remains change-based so normal Laravel log files are not spammed.
+    | Each audit reads the current project state directly from disk.
     */
     'console_output' => true,
 
@@ -101,10 +107,4 @@ return [
     /* Exact keys and regular expressions ignored by unused-key diagnostics. */
     'ignore_keys' => [],
     'ignore_patterns' => [],
-
-    /*
-    | Metadata-only result cache. Environment values are never written here.
-    | Set to null to use storage/framework/cache/laravel-env-guard.json.
-    */
-    'cache_path' => null,
 ];
