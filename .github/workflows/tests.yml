@@ -83,7 +83,10 @@ jobs:
         run: composer audit --no-interaction
 
       - name: Check formatting
-        run: composer format:test
+        run: |
+          composer format
+          git diff -- src tests config
+          git diff --exit-code -- src tests config
 
       - name: Static analysis
         run: composer analyse
