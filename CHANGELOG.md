@@ -4,6 +4,13 @@ All notable changes to Laravel Env Guard will be documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- Environment-file discovery is now name-agnostic by default: every plaintext `.env` and `.env.*` file in Laravel's configured environment directory is scanned and compared by key inventory, so `.env.example` is no longer a required or implicit canonical reference file.
+- Commented assignments in discovered non-active environment files count as documented key inventory, while commented assignments in Laravel's active environment file never satisfy active key presence.
+- `reference_files` and `compare_files` remain available as explicit opt-in controls. A `missing-reference-file` warning is now emitted only for a reference file that the project explicitly configured.
+- Renamed templates and `.env.dist` participate in automatic discovery; encrypted and common backup artifacts remain excluded from plaintext inspection.
+
 ## [1.2.0] - 2026-08-18
 
 ### Changed
