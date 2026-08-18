@@ -56,16 +56,24 @@
     "scripts": {
         "analyse": "phpstan analyse --memory-limit=512M",
         "check": [
-            "@composer validate --strict",
-            "@composer audit --no-interaction",
+            "@check:composer",
+            "@check:security",
+            "@check:autoload",
             "@format:test",
             "@analyse",
             "@test"
         ],
+        "check:autoload": "@composer dump-autoload --optimize --strict-psr --no-interaction",
+        "check:composer": "@composer validate --strict",
+        "check:security": "@composer audit --no-interaction",
         "format": "pint",
         "format:test": "pint --test",
         "test": "pest",
-        "test:coverage": "pest --coverage --min=80"
+        "test:coverage": "pest --coverage --min=80",
+        "test:e2e": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php tests/E2E/runner.php"
+        ]
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
@@ -74,5 +82,17 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true
         }
+    },
+    "scripts-descriptions": {
+        "analyse": "Run Larastan static analysis.",
+        "check": "Run Composer, security, autoload, formatting, static-analysis and Pest quality gates.",
+        "check:autoload": "Build an optimized autoloader and reject invalid PSR mappings.",
+        "check:composer": "Validate composer.json strictly.",
+        "check:security": "Audit installed dependencies for known security advisories.",
+        "format": "Apply Laravel Pint formatting.",
+        "format:test": "Check Laravel Pint formatting without changing files.",
+        "test": "Run the Pest suite.",
+        "test:coverage": "Run Pest with the enforced 80% coverage baseline.",
+        "test:e2e": "Install the package into a fresh Laravel application and exercise boot-time guard scenarios."
     }
 }
