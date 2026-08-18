@@ -35,6 +35,19 @@ jobs:
           python -m py_compile /tmp/apply-core.py /tmp/apply-tests.py
           python /tmp/apply-core.py
           python /tmp/apply-tests.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/EnvGuard.php')
+          text = path.read_text()
+          old = "                    $first['path'] ?? null,\n                    $first['line'] ?? null,"
+          new = "                    $first['path'],\n                    $first['line'],"
+
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one typed finding location, found {text.count(old)}')
+
+          path.write_text(text.replace(old, new, 1))
+          PY
 
       - name: Setup PHP
         if: steps.payload.outputs.apply == 'true'
