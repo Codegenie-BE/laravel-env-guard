@@ -126,6 +126,7 @@ jobs:
           php-version: '8.5'
           coverage: none
           tools: composer:v2
+          extensions: fileinfo
 
       - name: Install Laravel 13 development dependencies
         run: |
