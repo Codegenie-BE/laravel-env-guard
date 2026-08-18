@@ -11,7 +11,7 @@
 
 **Catch Laravel environment drift and unsafe `env()` usage before configuration caching turns it into a deployment bug.**
 
-Laravel Env Guard automatically audits environment-variable usage while a Laravel application boots in development. It catches environment drift before it becomes a deployment problem, without requiring a command and without storing secret values.
+Laravel Env Guard automatically audits environment-variable usage during guarded Artisan boots in development. Every audit reads the current project files directly, catches environment drift before it becomes a deployment problem, and does not require a separate command or persistent findings cache.
 
 ```bash
 composer require --dev codegenie-be/laravel-env-guard
@@ -48,7 +48,7 @@ Laravel Env Guard combines key-only environment-file inspection with lightweight
 | config is cached while the guard is active | Warning |
 | reference or active env file is missing | Warning |
 
-Errors fail fast in guarded development environments by default. Findings are logged when the scan result changes. During Artisan commands, current warnings and errors are also written to STDERR by default, even when the metadata scan result was reused from cache.
+Errors fail fast in guarded development environments by default. Every guarded audit reads the current project state and logs its findings. During Artisan commands, current warnings and errors are also written to STDERR by default.
 
 ## Why `env()` outside `config/` matters
 
@@ -141,10 +141,12 @@ The default configuration is deliberately conservative:
     'local',
 ],
 
+'console_only' => true,
+
 'fail_on_error' => true,
 ```
 
-Production and staging therefore do no source scan by default.
+Production and staging therefore do no source scan by default. Normal HTTP requests are also skipped by default because `console_only` is `true`; set it to `false` only when intentionally opting into a full audit during non-console boots.
 
 Testing is also excluded by default because Laravel boots an application repeatedly during a test suite. If your project wants automatic guard execution during tests:
 
@@ -176,7 +178,7 @@ WARNING [possibly-unused-key] CUSTOM_KEY: Environment key CUSTOM_KEY is declared
   .env:42
 ```
 
-Console output is intentionally independent from change-based logging. A cached finding therefore remains visible when you run another Artisan command, while Laravel's log file is not filled with the same warning on every boot.
+Each guarded Artisan boot performs a complete audit of the current relevant files before reporting. Findings are logged for that audit as well, so console and log output describe the same current project state without consulting persistent scan state.
 
 Disable console reporting without disabling the guard:
 
@@ -331,17 +333,11 @@ The package deliberately prunes `vendor/`, `node_modules/`, `.git/`, `storage/`,
 
 ## Performance
 
-The guard scans application-owned files only and ignores symlink targets. Files above the configured size limit are skipped.
+Every guarded audit reparses the current application-owned source and configured environment files. Laravel Env Guard does not persist findings or a source fingerprint between processes.
 
-A fingerprint is built from scanned-file metadata, behavior-affecting guard configuration, and the presence (never the values) of documented runtime environment keys. Sanitized findings are cached at:
+Automatic full-project scans are console-first by default, so ordinary HTTP requests do not repeatedly pay the static-analysis cost. Direct calls to `EnvGuard::inspect()` always inspect the current filesystem state.
 
-```text
-storage/framework/cache/laravel-env-guard.json
-```
-
-When that fingerprint is unchanged, source files are not reparsed. The optional Laravel-key policy is folded into the existing ignore-key fingerprint, so activating or deactivating a framework optional key cannot reuse an incompatible cached result.
-
-The cache contains key names, finding metadata, paths, and line numbers only. It never contains environment values.
+The scan remains bounded: dependency/generated trees are pruned, symlink targets are ignored, and files above the configured size limit are skipped.
 
 Change the maximum scanned file size if necessary:
 
@@ -349,15 +345,17 @@ Change the maximum scanned file size if necessary:
 'max_file_size' => 1_048_576,
 ```
 
+There is no `laravel-env-guard.json` result cache to clear. When upgrading from a version that created one, the next audit removes the legacy default cache file and any previously configured custom `cache_path`.
+
 ## Custom Laravel environment paths
 
 The active env file is not hard-coded to `base_path('.env')`. Laravel Env Guard asks the running Laravel application for its environment path and active environment file, so applications using `useEnvironmentPath()` or `loadEnvironmentFrom()` remain supported.
 
 ## Long-running processes
 
-Laravel Env Guard runs when the Laravel application boots. Under Octane, a queue worker, Reverb, or another long-running process, that means the audit runs when that process starts. Reload/restart the process after changing source or environment files, just as you would for other boot-time configuration changes.
+With the default `console_only` setting, Laravel Env Guard runs when a guarded console process boots. That includes Artisan-started long-running processes such as queue workers, Reverb, and Octane startup, but normal HTTP request boots are skipped. Reload/restart a long-running process after changing source or environment files when you want its startup audit to run again.
 
-Console output applies only when Laravel is running in console mode.
+Set `console_only` to `false` only if your application deliberately wants automatic audits during non-console boots.
 
 ## Encrypted environment files
 
@@ -373,6 +371,7 @@ Default configuration:
 return [
     'enabled' => true,
     'environments' => ['local'],
+    'console_only' => true,
     'fail_on_error' => true,
     'console_output' => true,
     'suppress_inactive_laravel_keys' => true,
@@ -428,7 +427,6 @@ return [
 
     'ignore_keys' => [],
     'ignore_patterns' => [],
-    'cache_path' => null,
 ];
 ```
 
@@ -452,7 +450,7 @@ Laravel Env Guard follows several hard rules:
 - no environment values in console output;
 - no environment values in logs;
 - no environment values in exceptions;
-- no environment values in the metadata cache;
+- no persistent findings or fingerprint cache;
 - no production scanning by default.
 
 See [SECURITY.md](SECURITY.md).

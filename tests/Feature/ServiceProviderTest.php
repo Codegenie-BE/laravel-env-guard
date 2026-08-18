@@ -10,3 +10,11 @@ it('is disabled automatically outside configured development environments', func
     expect(app()->environment())->toBe('testing')
         ->and(config('env-guard.environments'))->toBe(['local']);
 });
+
+it('defaults automatic full-project audits to console boots', function () {
+    $provider = file_get_contents(__DIR__.'/../../src/EnvGuardServiceProvider.php');
+
+    expect(config('env-guard.console_only'))->toBeTrue()
+        ->and($provider)->toContain("config('env-guard.console_only', true)")
+        ->and($provider)->toContain('! $this->app->runningInConsole()');
+});

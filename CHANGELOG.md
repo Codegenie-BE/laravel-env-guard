@@ -4,6 +4,12 @@ All notable changes to Laravel Env Guard will be documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- Automatic full-project audits are console-first by default through `console_only`, avoiding a complete static scan on every normal HTTP request.
+- Every audit now reads and analyzes the current source/environment state directly; the persistent `laravel-env-guard.json` findings cache, metadata invalidation machinery, and `cache_path` configuration have been removed.
+- `EnvGuard::inspect()` retains the legacy `fresh` and `fingerprint` result fields for 1.x compatibility; `fresh` is always `true` and the fingerprint is an in-memory signature of the current sanitized findings only.
+
 ## [1.1.0] - 2026-08-18
 
 ### Added

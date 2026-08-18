@@ -9,7 +9,8 @@ use Codegenie\EnvGuard\Scanners\TextEnvironmentScanner;
 use Illuminate\Config\Repository;
 use Illuminate\Foundation\Application;
 
-function configurationCacheGuard(string $root): array
+/** @return array{Application, EnvGuard} */
+function currentStateGuard(string $root): array
 {
     $app = new class($root) extends Application
     {
@@ -36,7 +37,6 @@ function configurationCacheGuard(string $root): array
         'known_external_keys' => [],
         'ignore_keys' => [],
         'ignore_patterns' => [],
-        'cache_path' => $root.'/storage/env-guard.json',
     ] as $key => $value) {
         config()->set('env-guard.'.$key, $value);
     }
@@ -47,8 +47,8 @@ function configurationCacheGuard(string $root): array
     ];
 }
 
-it('invalidates cached findings when Laravel configuration cache state changes between processes', function () {
-    $root = sys_get_temp_dir().'/env-guard-config-cache-'.bin2hex(random_bytes(5));
+it('observes current Laravel configuration-cache state without persistent scan state', function (): void {
+    $root = sys_get_temp_dir().'/env-guard-current-state-'.bin2hex(random_bytes(5));
 
     foreach (['app', 'bootstrap/cache', 'config', 'public', 'storage'] as $directory) {
         mkdir($root.'/'.$directory, 0777, true);
@@ -59,38 +59,34 @@ it('invalidates cached findings when Laravel configuration cache state changes b
     file_put_contents($root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\n");
 
     try {
-        [$uncachedApp, $uncachedGuard] = configurationCacheGuard($root);
-
-        expect($uncachedApp->configurationIsCached())->toBeFalse();
-
+        [$uncachedApp, $uncachedGuard] = currentStateGuard($root);
         $uncached = $uncachedGuard->inspect();
         $cachedConfigPath = $uncachedApp->getCachedConfigPath();
-        $bytesWritten = file_put_contents($cachedConfigPath, '<?php return [];');
+
+        expect($uncachedApp->configurationIsCached())->toBeFalse()
+            ->and($uncached['fresh'])->toBeTrue()
+            ->and(array_column($uncached['findings'], 'code'))->not->toContain('configuration-cached');
+
+        expect(file_put_contents($cachedConfigPath, '<?php return [];'))->not->toBeFalse();
         clearstatcache(true, $cachedConfigPath);
 
-        expect($bytesWritten)->not->toBeFalse();
-
-        [$cachedApp, $cachedGuard] = configurationCacheGuard($root);
-
-        expect($cachedApp->configurationIsCached())->toBeTrue();
-
+        [$cachedApp, $cachedGuard] = currentStateGuard($root);
         $cached = $cachedGuard->inspect();
+
+        expect($cachedApp->configurationIsCached())->toBeTrue()
+            ->and($cached['fresh'])->toBeTrue()
+            ->and(array_column($cached['findings'], 'code'))->toContain('configuration-cached');
 
         expect(@unlink($cachedConfigPath))->toBeTrue();
         clearstatcache(true, $cachedConfigPath);
 
-        [$clearedApp, $clearedGuard] = configurationCacheGuard($root);
-
-        expect($clearedApp->configurationIsCached())->toBeFalse();
-
+        [$clearedApp, $clearedGuard] = currentStateGuard($root);
         $cleared = $clearedGuard->inspect();
 
-        expect($uncached['fresh'])->toBeTrue()
-            ->and(array_column($uncached['findings'], 'code'))->not->toContain('configuration-cached')
-            ->and($cached['fresh'])->toBeTrue()
-            ->and(array_column($cached['findings'], 'code'))->toContain('configuration-cached')
+        expect($clearedApp->configurationIsCached())->toBeFalse()
             ->and($cleared['fresh'])->toBeTrue()
-            ->and(array_column($cleared['findings'], 'code'))->not->toContain('configuration-cached');
+            ->and(array_column($cleared['findings'], 'code'))->not->toContain('configuration-cached')
+            ->and(is_file($root.'/storage/framework/cache/laravel-env-guard.json'))->toBeFalse();
     } finally {
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($root, RecursiveDirectoryIterator::SKIP_DOTS),
