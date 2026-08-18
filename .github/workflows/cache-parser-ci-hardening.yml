@@ -67,11 +67,11 @@ jobs:
       - name: Tests and coverage
         run: composer test:coverage
 
-      - name: Commit validated changes
+      - name: Commit validated non-workflow changes
         run: |
           git show origin/main:composer.json > composer.json
+          git show origin/main:.github/workflows/tests.yml > .github/workflows/tests.yml
           rm .github/cache-parser-ci-hardening.patch
-          rm .github/workflows/cache-parser-ci-hardening.yml
           git add -A
           git diff --cached --check
           git config user.name "github-actions[bot]"
