@@ -129,7 +129,7 @@ jobs:
 
       - name: Install Laravel 13 development dependencies
         run: |
-          composer require --dev "laravel/framework:^13.0" "orchestra/testbench:^11.0" --no-update --no-interaction
+          composer require --dev 'laravel/framework:^13.0' 'orchestra/testbench:^11.0' --no-update --no-interaction
           composer update --prefer-stable --prefer-dist --no-interaction --no-progress
 
       - name: Run tests
