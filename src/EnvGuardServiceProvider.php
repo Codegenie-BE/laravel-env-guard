@@ -53,6 +53,10 @@ final class EnvGuardServiceProvider extends ServiceProvider
             return;
         }
 
+        if ((bool) config('env-guard.console_only', true) && ! $this->app->runningInConsole()) {
+            return;
+        }
+
         $environments = array_values(array_filter(
             (array) config('env-guard.environments', ['local']),
             'is_string',
@@ -73,15 +77,13 @@ final class EnvGuardServiceProvider extends ServiceProvider
             return;
         }
 
-        if ($result['fresh']) {
-            foreach ($result['findings'] as $finding) {
-                $this->log($finding['severity'] === 'error' ? 'error' : 'warning', $finding['message'], [
-                    'code' => $finding['code'] ?? null,
-                    'key' => $finding['key'] ?? null,
-                    'path' => $finding['path'] ?? null,
-                    'line' => $finding['line'] ?? null,
-                ]);
-            }
+        foreach ($result['findings'] as $finding) {
+            $this->log($finding['severity'] === 'error' ? 'error' : 'warning', $finding['message'], [
+                'code' => $finding['code'] ?? null,
+                'key' => $finding['key'] ?? null,
+                'path' => $finding['path'] ?? null,
+                'line' => $finding['line'] ?? null,
+            ]);
         }
 
         if ($this->app->runningInConsole() && (bool) config('env-guard.console_output', true)) {
