@@ -115,3 +115,79 @@ JS);
 
     @unlink($path);
 });
+
+it('supports PHPUnit server variables and ignores XML CDATA examples', function () {
+    $root = sys_get_temp_dir().'/env-guard-phpunit-'.bin2hex(random_bytes(4));
+    mkdir($root, 0777, true);
+    $path = $root.'/phpunit.xml';
+    file_put_contents($path, <<<'XML'
+<php>
+    <!-- <env name="COMMENTED_ENV" value="one"/> -->
+    <![CDATA[<server name="CDATA_SERVER" value="two"/>]]>
+    <env name="REAL_ENV" value="three"/>
+    <server name="REAL_SERVER" value="four"/>
+</php>
+XML);
+
+    $result = (new TextEnvironmentScanner)->scan([$path], []);
+
+    expect($result['phpunit_keys'])->toBe(['REAL_ENV', 'REAL_SERVER']);
+
+    @unlink($path);
+    @rmdir($root);
+});
+
+it('scans executable frontend expressions without treating strings or regular expressions as usage', function () {
+    $temporary = tempnam(sys_get_temp_dir(), 'vite-');
+    $path = $temporary.'.ts';
+    rename($temporary, $path);
+    file_put_contents($path, <<<'JS'
+// import.meta.env.VITE_LINE_COMMENT
+/* import.meta.env.VITE_BLOCK_COMMENT */
+const quoted = "import.meta.env.VITE_STRING";
+const bracketText = "import.meta.env['VITE_STRING_BRACKET']";
+const regularExpression = /import\.meta\.env\.VITE_REGEX/;
+const rawTemplate = `import.meta.env.VITE_TEMPLATE_TEXT`;
+const actual = import.meta.env.VITE_REAL;
+const bracket = import.meta.env['VITE_BRACKET'];
+const ratio = total / import.meta.env.VITE_DIVISOR;
+const template = `prefix ${import.meta.env.VITE_TEMPLATE_EXPRESSION}`;
+const nested = `outer ${`inner ${import.meta.env.VITE_NESTED_EXPRESSION}`}`;
+const { VITE_DESTRUCTURED: localName, VITE_DEFAULT = 'fallback' } = import.meta.env;
+const { NODE_DESTRUCTURED } = process.env;
+const env = loadEnv(mode, process.cwd(), '');
+console.log(env.VITE_LOAD_ENV);
+console.log(env['VITE_LOAD_BRACKET']);
+const { VITE_LOAD_DESTRUCTURED } = env;
+const { VITE_DIRECT_LOAD } = loadEnv(mode, process.cwd(), '');
+JS);
+
+    $result = (new TextEnvironmentScanner)->scan([$path], ['NODE_DESTRUCTURED']);
+    $keys = array_column($result['usages'], 'key');
+
+    expect($keys)->toContain(
+        'VITE_REAL',
+        'VITE_BRACKET',
+        'VITE_DIVISOR',
+        'VITE_TEMPLATE_EXPRESSION',
+        'VITE_NESTED_EXPRESSION',
+        'VITE_DESTRUCTURED',
+        'VITE_DEFAULT',
+        'NODE_DESTRUCTURED',
+        'VITE_LOAD_ENV',
+        'VITE_LOAD_BRACKET',
+        'VITE_LOAD_DESTRUCTURED',
+        'VITE_DIRECT_LOAD',
+    )
+        ->and($keys)->not->toContain(
+            'VITE_LINE_COMMENT',
+            'VITE_BLOCK_COMMENT',
+            'VITE_STRING',
+            'VITE_STRING_BRACKET',
+            'VITE_REGEX',
+            'VITE_TEMPLATE_TEXT',
+        )
+        ->and(array_count_values($keys)['VITE_REAL'] ?? 0)->toBe(1);
+
+    @unlink($path);
+});

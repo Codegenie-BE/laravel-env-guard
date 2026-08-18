@@ -15,7 +15,7 @@ use Throwable;
 
 final class EnvGuard
 {
-    private const CACHE_VERSION = 2;
+    private const CACHE_VERSION = 3;
 
     public function __construct(
         private readonly Application $app,
@@ -72,6 +72,19 @@ final class EnvGuard
         $environmentScans = [];
         $activePath = $this->app->environmentFilePath();
         $referencePaths = $this->referencePaths();
+
+        foreach ((array) config('env-guard.ignore_patterns', []) as $pattern) {
+            if (! is_string($pattern) || $pattern === '' || @preg_match($pattern, '') === false) {
+                $findings[] = $this->finding(
+                    'warning',
+                    'invalid-ignore-pattern',
+                    null,
+                    'An env-guard.ignore_patterns entry is not a valid regular expression and was ignored.',
+                    null,
+                    null,
+                );
+            }
+        }
 
         if ($this->app->configurationIsCached()) {
             $findings[] = $this->finding(
@@ -208,8 +221,16 @@ final class EnvGuard
             }
         }
 
+        $declaredCaseInsensitive = [];
+
+        foreach (array_keys($declared) as $key) {
+            $declaredCaseInsensitive[strtolower($key)][] = $key;
+        }
+
         foreach ($phpScan['raw'] as $usage) {
-            if (! isset($declared[$usage['key']])) {
+            $caseMatches = $declaredCaseInsensitive[strtolower($usage['key'])] ?? [];
+
+            if (! isset($declared[$usage['key']]) && $caseMatches === []) {
                 continue;
             }
 
@@ -222,12 +243,6 @@ final class EnvGuard
                 $usage['path'],
                 $usage['line'],
             );
-        }
-
-        $declaredCaseInsensitive = [];
-
-        foreach (array_keys($declared) as $key) {
-            $declaredCaseInsensitive[strtolower($key)][] = $key;
         }
 
         foreach ($usages as $key => $locations) {
@@ -285,6 +300,15 @@ final class EnvGuard
             }
         }
 
+        $existingReferenceScans = array_values(array_filter(
+            $referenceScans,
+            static fn (array $scan): bool => $scan['exists'],
+        ));
+        $referenceLabel = count($existingReferenceScans) === 1
+            ? basename($existingReferenceScans[0]['path'])
+            : 'the configured reference environment files';
+        $projectKeys = array_fill_keys(array_keys($usages), true);
+
         if (! is_array($activeScan) || ! $activeScan['exists']) {
             $findings[] = $this->finding(
                 'warning',
@@ -296,7 +320,7 @@ final class EnvGuard
             );
         }
 
-        if (is_array($activeScan) && $activeScan['exists']) {
+        if ($existingReferenceScans !== [] && is_array($activeScan) && $activeScan['exists']) {
             foreach ($activeScan['keys'] as $key => $meta) {
                 if ($this->isIgnored($key) || isset($documentedKeys[$key])) {
                     continue;
@@ -306,9 +330,36 @@ final class EnvGuard
                     'warning',
                     'missing-from-example',
                     $key,
-                    sprintf('Environment key %s exists in the active environment file but is not documented in .env.example.', $key),
+                    sprintf('Environment key %s exists in the active environment file but is not documented in %s.', $key, $referenceLabel),
                     $activePath,
                     $meta['line'],
+                );
+            }
+        }
+
+        if ($existingReferenceScans !== []) {
+            foreach (array_keys($projectKeys) as $key) {
+                if (isset($documentedKeys[$key]) || $this->isIgnored($key) || ! isset($declared[$key])) {
+                    continue;
+                }
+
+                if (is_array($activeScan) && $activeScan['exists'] && isset($activeScan['keys'][$key])) {
+                    continue;
+                }
+
+                $first = $usages[$key][0] ?? null;
+
+                if (! is_array($first)) {
+                    continue;
+                }
+
+                $findings[] = $this->finding(
+                    'warning',
+                    'missing-from-reference-file',
+                    $key,
+                    sprintf('Environment key %s is used by the project but is not documented in %s.', $key, $referenceLabel),
+                    $first['path'],
+                    $first['line'],
                 );
             }
         }
@@ -336,7 +387,6 @@ final class EnvGuard
 
         $phpUnitKeys = array_fill_keys($textScan['phpunit_keys'], true);
         $comparisonPaths = array_values(array_diff($this->comparisonPaths(), [$activePath], $referencePaths));
-        $projectKeys = array_fill_keys(array_keys($usages), true);
 
         foreach ($comparisonPaths as $path) {
             $scan = $environmentScans[$path] ?? null;
@@ -441,7 +491,7 @@ final class EnvGuard
 
         foreach ((array) config('env-guard.project_files', []) as $configuredFile) {
             if (is_string($configuredFile) && $configuredFile !== '') {
-                $this->maybeAddSourceFile($files, $this->resolveBasePath($configuredFile), $maxSize);
+                $this->maybeAddSourceFile($files, $this->resolveBasePath($configuredFile), $maxSize, true);
             }
         }
 
@@ -490,8 +540,8 @@ final class EnvGuard
 
     private function isExcludedSourcePath(string $path): bool
     {
-        $base = rtrim(strtolower(str_replace('\\', '/', $this->app->basePath())), '/');
-        $normalized = strtolower(str_replace('\\', '/', $path));
+        $base = rtrim($this->normalizeComparablePath($this->app->basePath()), '/');
+        $normalized = $this->normalizeComparablePath($path);
 
         if ($normalized === $base) {
             return false;
@@ -514,6 +564,13 @@ final class EnvGuard
         return false;
     }
 
+    private function normalizeComparablePath(string $path): string
+    {
+        $normalized = str_replace('\\', '/', $path);
+
+        return DIRECTORY_SEPARATOR === '\\' ? strtolower($normalized) : $normalized;
+    }
+
     /** @param list<string> $files */
     private function maybeAddSourceFile(array &$files, string $path, int $maxSize, bool $allowAnyText = false): void
     {
@@ -524,6 +581,10 @@ final class EnvGuard
         $size = filesize($path);
 
         if ($size === false || $size > $maxSize) {
+            return;
+        }
+
+        if ($allowAnyText && ! $this->isLikelyTextFile($path)) {
             return;
         }
 
@@ -544,6 +605,20 @@ final class EnvGuard
         if ($supported) {
             $files[] = $path;
         }
+    }
+
+    private function isLikelyTextFile(string $path): bool
+    {
+        $handle = @fopen($path, 'rb');
+
+        if ($handle === false) {
+            return false;
+        }
+
+        $sample = fread($handle, 4096);
+        fclose($handle);
+
+        return $sample !== false && ! str_contains($sample, "\0");
     }
 
     /** @return list<string> */
@@ -768,9 +843,15 @@ final class EnvGuard
 
         @chmod($temporary, 0600);
 
-        if (! @rename($temporary, $path)) {
-            @unlink($temporary);
+        if (@rename($temporary, $path)) {
+            return;
         }
+
+        if (@copy($temporary, $path)) {
+            @chmod($path, 0600);
+        }
+
+        @unlink($temporary);
     }
 
     private function cachePath(): string
@@ -836,8 +917,12 @@ final class EnvGuard
     {
         $base = rtrim(str_replace('\\', '/', $this->app->basePath()), '/').'/';
         $normalized = str_replace('\\', '/', $path);
+        $comparableBase = rtrim($this->normalizeComparablePath($this->app->basePath()), '/').'/';
+        $comparablePath = $this->normalizeComparablePath($path);
 
-        return str_starts_with($normalized, $base) ? substr($normalized, strlen($base)) : $normalized;
+        return str_starts_with($comparablePath, $comparableBase)
+            ? substr($normalized, strlen($base))
+            : $normalized;
     }
 
     /**

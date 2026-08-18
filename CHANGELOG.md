@@ -34,3 +34,8 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Recursive root scans now prune dependency, VCS, storage, and bootstrap cache trees before traversal.
 - Text scanning now masks Blade, XML/HTML, JavaScript-style, and infrastructure comments while preserving diagnostic line offsets.
 - PHP environment scanning now recognizes literal `key:` named arguments for `env()` and `Env::get()`.
+
+- Reference completeness now catches keys used by the application but declared only outside configured reference files, without creating per-key cascades when reference checks are disabled or every reference file is missing.
+- PHP scanning now handles reordered named arguments, grouped/comma imports, first-class callable syntax, named `getenv()` arguments, and raw-access case mismatches.
+- Frontend scanning now distinguishes executable template expressions from comments, strings, regular-expression literals, and template text; it also covers direct environment destructuring.
+- PHPUnit `<server>` variables, UTF-8 BOM environment files, explicit extensionless text project files, binary-file skipping, malformed ignore patterns, and cross-platform path comparison are now covered.

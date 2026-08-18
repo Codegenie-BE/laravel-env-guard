@@ -159,34 +159,77 @@ final class PhpEnvironmentScanner
                 continue;
             }
 
-            $nameIndex = $this->nextSignificantIndex($tokens, $index);
+            $start = $this->nextSignificantIndex($tokens, $index);
 
-            if ($nameIndex === null || ! is_array($tokens[$nameIndex])) {
+            if ($start === null || $tokens[$start] === '(' || $this->tokenIs($tokens[$start], T_FUNCTION) || $this->tokenIs($tokens[$start], T_CONST)) {
                 continue;
             }
 
-            $nameToken = $tokens[$nameIndex];
+            $end = $this->statementEndIndex($tokens, $start);
 
-            if (! in_array($nameToken[0], [T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED], true)
-                || strtolower(ltrim($nameToken[1], '\\')) !== 'illuminate\\support\\env') {
+            if ($end === null) {
                 continue;
             }
 
-            $alias = 'Env';
-            $nextIndex = $this->nextSignificantIndex($tokens, $nameIndex);
+            $statement = '';
 
-            if ($nextIndex !== null && $this->tokenIs($tokens[$nextIndex], T_AS)) {
-                $aliasIndex = $this->nextSignificantIndex($tokens, $nextIndex);
+            for ($position = $start; $position < $end; $position++) {
+                $token = $tokens[$position];
 
-                if ($aliasIndex !== null && is_array($tokens[$aliasIndex]) && $tokens[$aliasIndex][0] === T_STRING) {
-                    $alias = $tokens[$aliasIndex][1];
+                if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                    continue;
                 }
+
+                $statement .= is_array($token) ? $token[1] : $token;
             }
 
-            $aliases[strtolower($alias)] = true;
+            foreach ($this->splitTopLevel($statement, ',') as $import) {
+                $this->collectEnvImportAlias($aliases, $import);
+            }
+
+            $index = $end;
         }
 
         return $aliases;
+    }
+
+    /** @param array<string, true> $aliases */
+    private function collectEnvImportAlias(array &$aliases, string $import): void
+    {
+        $import = trim($import);
+
+        if ($import === '') {
+            return;
+        }
+
+        if (preg_match('/^(.*)\\\\\{(.*)\}$/s', $import, $group)) {
+            $prefix = rtrim(trim($group[1]), '\\');
+
+            foreach ($this->splitTopLevel($group[2], ',') as $member) {
+                $this->collectDirectEnvImportAlias($aliases, $prefix.'\\'.trim($member));
+            }
+
+            return;
+        }
+
+        $this->collectDirectEnvImportAlias($aliases, $import);
+    }
+
+    /** @param array<string, true> $aliases */
+    private function collectDirectEnvImportAlias(array &$aliases, string $import): void
+    {
+        if (! preg_match('/^\s*([\\\\A-Za-z0-9_]+?)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*$/i', $import, $matches)) {
+            return;
+        }
+
+        $name = ltrim($matches[1], '\\');
+
+        if (strtolower($name) !== 'illuminate\\support\\env') {
+            return;
+        }
+
+        $alias = $matches[2] ?? 'Env';
+        $aliases[strtolower($alias)] = true;
     }
 
     /**
@@ -202,35 +245,13 @@ final class PhpEnvironmentScanner
         bool $inConfig,
         string $source,
     ): void {
-        $argumentIndex = $this->environmentKeyArgumentIndex($tokens, $openIndex);
+        $resolved = $this->resolveLiteralCallArgument($tokens, $openIndex, 'key');
 
-        if ($argumentIndex === null || ! is_array($tokens[$argumentIndex]) || $tokens[$argumentIndex][0] !== T_CONSTANT_ENCAPSED_STRING) {
-            $result['dynamic'][] = [
-                'path' => $file,
-                'line' => $line,
-                'in_config' => $inConfig,
-                'source' => $source,
-            ];
-
+        if ($resolved['status'] === 'callable') {
             return;
         }
 
-        $afterArgument = $this->nextSignificantIndex($tokens, $argumentIndex);
-
-        if ($afterArgument === null || ! in_array($tokens[$afterArgument], [')', ','], true)) {
-            $result['dynamic'][] = [
-                'path' => $file,
-                'line' => $line,
-                'in_config' => $inConfig,
-                'source' => $source,
-            ];
-
-            return;
-        }
-
-        $key = $this->decodeStringLiteral($tokens[$argumentIndex][1]);
-
-        if ($key === null || $key === '') {
+        if ($resolved['status'] !== 'literal') {
             $result['dynamic'][] = [
                 'path' => $file,
                 'line' => $line,
@@ -242,7 +263,7 @@ final class PhpEnvironmentScanner
         }
 
         $result['usages'][] = [
-            'key' => $key,
+            'key' => $resolved['key'],
             'path' => $file,
             'line' => $line,
             'in_config' => $inConfig,
@@ -274,18 +295,16 @@ final class PhpEnvironmentScanner
                 }
 
                 $openIndex = $this->nextSignificantIndex($tokens, $index);
-                $argumentIndex = $openIndex === null ? null : $this->nextSignificantIndex($tokens, $openIndex);
 
-                if ($openIndex === null || $tokens[$openIndex] !== '(' || $argumentIndex === null) {
+                if ($openIndex === null || $tokens[$openIndex] !== '(') {
                     continue;
                 }
 
-                $key = $this->literalKeyAt($tokens, $argumentIndex);
-                $afterArgument = $this->nextSignificantIndex($tokens, $argumentIndex);
+                $resolved = $this->resolveLiteralCallArgument($tokens, $openIndex, 'name');
 
-                if ($key !== null && $afterArgument !== null && in_array($tokens[$afterArgument], [')', ','], true)) {
+                if ($resolved['status'] === 'literal') {
                     $usages[] = [
-                        'key' => $key,
+                        'key' => $resolved['key'],
                         'path' => $file,
                         'line' => $token[2],
                         'source' => 'getenv',
@@ -324,32 +343,155 @@ final class PhpEnvironmentScanner
         return $usages;
     }
 
-    /** @param array<int, array<int, mixed>|string> $tokens */
-    private function environmentKeyArgumentIndex(array $tokens, int $openIndex): ?int
+    /**
+     * @param  array<int, array<int, mixed>|string>  $tokens
+     * @return array{status:'literal', key:string}|array{status:'dynamic'|'callable'}
+     */
+    private function resolveLiteralCallArgument(array $tokens, int $openIndex, string $parameterName): array
     {
-        $index = $this->nextSignificantIndex($tokens, $openIndex);
+        $ranges = $this->argumentRanges($tokens, $openIndex);
 
-        if ($index === null) {
-            return null;
+        if ($ranges === null || $ranges === []) {
+            return ['status' => 'dynamic'];
         }
 
-        $token = $tokens[$index];
+        if (count($ranges) === 1) {
+            $only = $this->significantIndexes($tokens, $ranges[0][0], $ranges[0][1]);
 
-        if (! is_array($token) || $token[0] !== T_STRING) {
-            return $index;
+            if (count($only) === 1 && $this->tokenIs($tokens[$only[0]], T_ELLIPSIS)) {
+                return ['status' => 'callable'];
+            }
         }
 
-        $colonIndex = $this->nextSignificantIndex($tokens, $index);
+        $positional = null;
+        $named = null;
 
-        if ($colonIndex === null || $tokens[$colonIndex] !== ':') {
-            return $index;
+        foreach ($ranges as $position => [$start, $end]) {
+            $indexes = $this->significantIndexes($tokens, $start, $end);
+
+            if ($indexes === []) {
+                continue;
+            }
+
+            if (count($indexes) >= 3 && $tokens[$indexes[1]] === ':') {
+                $labelToken = $tokens[$indexes[0]];
+                $label = is_array($labelToken) ? strtolower($labelToken[1]) : strtolower($labelToken);
+
+                if ($label === strtolower($parameterName)) {
+                    $named = array_slice($indexes, 2);
+                }
+
+                continue;
+            }
+
+            if ($position === 0) {
+                $positional = $indexes;
+            }
         }
 
-        if (strtolower($token[1]) !== 'key') {
-            return null;
+        $candidate = $named ?? $positional;
+
+        if ($candidate === null || count($candidate) !== 1) {
+            return ['status' => 'dynamic'];
         }
 
-        return $this->nextSignificantIndex($tokens, $colonIndex);
+        $key = $this->literalKeyAt($tokens, $candidate[0]);
+
+        return $key === null
+            ? ['status' => 'dynamic']
+            : ['status' => 'literal', 'key' => $key];
+    }
+
+    /**
+     * @param  array<int, array<int, mixed>|string>  $tokens
+     * @return list<array{int, int}>|null
+     */
+    private function argumentRanges(array $tokens, int $openIndex): ?array
+    {
+        $ranges = [];
+        $start = $openIndex + 1;
+        $parentheses = 0;
+        $brackets = 0;
+        $braces = 0;
+        $count = count($tokens);
+
+        for ($index = $start; $index < $count; $index++) {
+            $token = $tokens[$index];
+
+            if ($token === '(') {
+                $parentheses++;
+
+                continue;
+            }
+
+            if ($token === '[') {
+                $brackets++;
+
+                continue;
+            }
+
+            if ($token === '{') {
+                $braces++;
+
+                continue;
+            }
+
+            if ($token === ')' && $parentheses === 0 && $brackets === 0 && $braces === 0) {
+                if ($this->significantIndexes($tokens, $start, $index - 1) !== []) {
+                    $ranges[] = [$start, $index - 1];
+                }
+
+                return $ranges;
+            }
+
+            if ($token === ')') {
+                $parentheses = max(0, $parentheses - 1);
+
+                continue;
+            }
+
+            if ($token === ']') {
+                $brackets = max(0, $brackets - 1);
+
+                continue;
+            }
+
+            if ($token === '}') {
+                $braces = max(0, $braces - 1);
+
+                continue;
+            }
+
+            if ($token === ',' && $parentheses === 0 && $brackets === 0 && $braces === 0) {
+                $ranges[] = [$start, $index - 1];
+                $start = $index + 1;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, array<int, mixed>|string>  $tokens
+     * @return list<int>
+     */
+    private function significantIndexes(array $tokens, int $start, int $end): array
+    {
+        $indexes = [];
+
+        for ($index = $start; $index <= $end; $index++) {
+            $token = $tokens[$index] ?? null;
+
+            if (is_array($token) && in_array($token[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            if ($token !== null) {
+                $indexes[] = $index;
+            }
+        }
+
+        return $indexes;
     }
 
     /** @param array<int, array<int, mixed>|string> $tokens */
@@ -364,6 +506,48 @@ final class PhpEnvironmentScanner
         $key = $this->decodeStringLiteral($token[1]);
 
         return $key === '' ? null : $key;
+    }
+
+    /** @param array<int, array<int, mixed>|string> $tokens */
+    private function statementEndIndex(array $tokens, int $start): ?int
+    {
+        $braces = 0;
+
+        for ($index = $start, $count = count($tokens); $index < $count; $index++) {
+            if ($tokens[$index] === '{') {
+                $braces++;
+            } elseif ($tokens[$index] === '}') {
+                $braces = max(0, $braces - 1);
+            } elseif ($tokens[$index] === ';' && $braces === 0) {
+                return $index;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<string> */
+    private function splitTopLevel(string $value, string $separator): array
+    {
+        $parts = [];
+        $start = 0;
+        $braces = 0;
+        $length = strlen($value);
+
+        for ($index = 0; $index < $length; $index++) {
+            if ($value[$index] === '{') {
+                $braces++;
+            } elseif ($value[$index] === '}') {
+                $braces = max(0, $braces - 1);
+            } elseif ($value[$index] === $separator && $braces === 0) {
+                $parts[] = substr($value, $start, $index - $start);
+                $start = $index + 1;
+            }
+        }
+
+        $parts[] = substr($value, $start);
+
+        return $parts;
     }
 
     /** @param array<int, array<int, mixed>|string> $tokens */
@@ -429,9 +613,17 @@ final class PhpEnvironmentScanner
 
     private function isWithin(string $file, string $directory): bool
     {
-        $file = str_replace('\\', '/', $file);
-        $directory = rtrim(str_replace('\\', '/', $directory), '/').'/';
+        $file = $this->normalizePath($file);
+        $directory = rtrim($this->normalizePath($directory), '/').'/';
 
         return str_starts_with($file, $directory);
+    }
+
+    private function normalizePath(string $path): string
+    {
+        $resolved = realpath($path);
+        $normalized = str_replace('\\', '/', $resolved === false ? $path : $resolved);
+
+        return DIRECTORY_SEPARATOR === '\\' ? strtolower($normalized) : $normalized;
     }
 }

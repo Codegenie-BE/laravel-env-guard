@@ -91,3 +91,45 @@ PHPFILE);
         ->and($result['dynamic'][0]['source'])->toBe('Env::get')
         ->and(array_column($result['raw'], 'key'))->toBe(['THREE', 'FOUR', 'FIVE', 'SIX']);
 });
+
+it('supports reordered named arguments, import groups and first-class callables', function () {
+    file_put_contents($this->root.'/config/services.php', <<<'PHPFILE'
+<?php
+use Illuminate\Support\{Env as GroupEnv, Str};
+use Illuminate\Support\Str as Other, Illuminate\Support\Env as SecondEnv;
+
+return [
+    'one' => env(default: null, key: 'REORDERED_CONFIG'),
+    'two' => GroupEnv::get(default: null, key: 'GROUPED_FACADE'),
+    'three' => SecondEnv::get(key: 'SECOND_IMPORT'),
+    'callable' => env(...),
+];
+PHPFILE);
+    file_put_contents($this->root.'/app/Example.php', <<<'PHPFILE'
+<?php
+use Illuminate\Support\Env as LaravelEnv;
+
+$outside = env(default: null, key: 'REORDERED_OUTSIDE');
+$facade = LaravelEnv::get(default: null, key: 'REORDERED_FACADE');
+$dynamic = env(...$arguments);
+$raw = getenv(local_only: true, name: 'NAMED_GETENV');
+$getenvCallable = getenv(...);
+PHPFILE);
+
+    $result = (new PhpEnvironmentScanner)->scan([
+        $this->root.'/config/services.php',
+        $this->root.'/app/Example.php',
+    ], $this->root.'/config');
+    $keys = array_column($result['usages'], 'key');
+
+    expect($keys)->toContain(
+        'REORDERED_CONFIG',
+        'GROUPED_FACADE',
+        'SECOND_IMPORT',
+        'REORDERED_OUTSIDE',
+        'REORDERED_FACADE',
+    )
+        ->and($result['dynamic'])->toHaveCount(1)
+        ->and($result['dynamic'][0]['source'])->toBe('env')
+        ->and(array_column($result['raw'], 'key'))->toContain('NAMED_GETENV');
+});
