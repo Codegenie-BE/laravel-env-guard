@@ -135,3 +135,25 @@ jobs:
 
       - name: Run tests
         run: composer test
+
+  required:
+    name: Required CI
+    if: always()
+    needs:
+      - compatibility
+      - quality
+      - portability
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Require every CI job to pass
+        env:
+          COMPATIBILITY_RESULT: ${{ needs.compatibility.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          PORTABILITY_RESULT: ${{ needs.portability.result }}
+        run: |
+          set -euo pipefail
+          test "$COMPATIBILITY_RESULT" = "success"
+          test "$QUALITY_RESULT" = "success"
+          test "$PORTABILITY_RESULT" = "success"
