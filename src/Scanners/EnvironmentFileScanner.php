@@ -176,6 +176,7 @@ final class EnvironmentFileScanner
 
             if ($character === '\\') {
                 $escaped = ! $escaped;
+
                 continue;
             }
 

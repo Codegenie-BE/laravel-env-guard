@@ -5,7 +5,7 @@ namespace Codegenie\EnvGuard\Scanners;
 final class PhpEnvironmentScanner
 {
     /**
-     * @param list<string> $files
+     * @param  list<string>  $files
      * @return array{
      *     usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>,
      *     dynamic:list<array{path:string, line:int, in_config:bool, source:string}>,
@@ -45,8 +45,8 @@ final class PhpEnvironmentScanner
     }
 
     /**
-     * @param array{usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>, dynamic:list<array{path:string, line:int, in_config:bool, source:string}>, raw:list<array{key:string, path:string, line:int, source:string}>} $result
-     * @param array<int, array<int, mixed>|string> $tokens
+     * @param  array{usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>, dynamic:list<array{path:string, line:int, in_config:bool, source:string}>, raw:list<array{key:string, path:string, line:int, source:string}>}  $result
+     * @param  array<int, array<int, mixed>|string>  $tokens
      */
     private function scanEnvHelpers(array &$result, array $tokens, string $file, bool $inConfig): void
     {
@@ -79,7 +79,7 @@ final class PhpEnvironmentScanner
     }
 
     /**
-     * @param array<int, array<int, mixed>|string> $tokens
+     * @param  array<int, array<int, mixed>|string>  $tokens
      * @return array{
      *     usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>,
      *     dynamic:list<array{path:string, line:int, in_config:bool, source:string}>
@@ -134,7 +134,7 @@ final class PhpEnvironmentScanner
     }
 
     /**
-     * @param array<int, array<int, mixed>|string> $tokens
+     * @param  array<int, array<int, mixed>|string>  $tokens
      * @return array<string, true>
      */
     private function envFacadeAliases(array $tokens): array
@@ -178,8 +178,8 @@ final class PhpEnvironmentScanner
     }
 
     /**
-     * @param array{usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>, dynamic:list<array{path:string, line:int, in_config:bool, source:string}>} $result
-     * @param array<int, array<int, mixed>|string> $tokens
+     * @param  array{usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>, dynamic:list<array{path:string, line:int, in_config:bool, source:string}>}  $result
+     * @param  array<int, array<int, mixed>|string>  $tokens
      */
     private function recordEnvironmentCall(
         array &$result,
@@ -239,7 +239,7 @@ final class PhpEnvironmentScanner
     }
 
     /**
-     * @param array<int, array<int, mixed>|string> $tokens
+     * @param  array<int, array<int, mixed>|string>  $tokens
      * @return list<array{key:string, path:string, line:int, source:string}>
      */
     private function scanRawAccess(array $tokens, string $file): array
@@ -373,7 +373,7 @@ final class PhpEnvironmentScanner
         $value = substr($literal, 1, -1);
 
         if ($quote === "'") {
-            return str_replace(["\\\\", "\\'"], ["\\", "'"], $value);
+            return str_replace(['\\\\', "\\'"], ['\\', "'"], $value);
         }
 
         if ($quote === '"') {

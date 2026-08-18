@@ -5,8 +5,8 @@ namespace Codegenie\EnvGuard\Scanners;
 final class TextEnvironmentScanner
 {
     /**
-     * @param list<string> $files
-     * @param list<string> $declaredKeys
+     * @param  list<string>  $files
+     * @param  list<string>  $declaredKeys
      * @return array{
      *     usages:list<array{key:string, path:string, line:int, source:string}>,
      *     blade_env:list<array{key:string, path:string, line:int}>,
@@ -126,8 +126,8 @@ final class TextEnvironmentScanner
     }
 
     /**
-     * @param list<array{key:string, path:string, line:int, source:string}> $target
-     * @param callable(string): bool $filter
+     * @param  list<array{key:string, path:string, line:int, source:string}>  $target
+     * @param  callable(string): bool  $filter
      */
     private function collectDestructuredLoadEnv(
         array &$target,
@@ -164,8 +164,8 @@ final class TextEnvironmentScanner
     }
 
     /**
-     * @param list<array{key:string, path:string, line:int, source:string}> $target
-     * @param array<string, true> $declaredLookup
+     * @param  list<array{key:string, path:string, line:int, source:string}>  $target
+     * @param  array<string, true>  $declaredLookup
      */
     private function collectInfrastructureUsages(array &$target, string $contents, string $file, array $declaredLookup): void
     {

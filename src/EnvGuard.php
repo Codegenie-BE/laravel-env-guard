@@ -58,8 +58,8 @@ final class EnvGuard
     }
 
     /**
-     * @param list<string> $sourceFiles
-     * @param list<string> $environmentPaths
+     * @param  list<string>  $sourceFiles
+     * @param  list<string>  $environmentPaths
      * @return list<array<string, mixed>>
      */
     private function scan(array $sourceFiles, array $environmentPaths): array
@@ -408,6 +408,7 @@ final class EnvGuard
 
             if (is_file($path)) {
                 $this->maybeAddSourceFile($files, $path, $maxSize);
+
                 continue;
             }
 
@@ -590,6 +591,7 @@ final class EnvGuard
         foreach ($files as $file) {
             if (! file_exists($file)) {
                 $parts[] = $file.'|missing';
+
                 continue;
             }
 
@@ -597,6 +599,7 @@ final class EnvGuard
 
             if ($stat === false) {
                 $parts[] = $file.'|unreadable';
+
                 continue;
             }
 
@@ -733,7 +736,7 @@ final class EnvGuard
     }
 
     /**
-     * @param list<array<string, mixed>> $findings
+     * @param  list<array<string, mixed>>  $findings
      * @return list<array<string, mixed>>
      */
     private function deduplicateAndSort(array $findings): array
