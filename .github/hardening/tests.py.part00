@@ -1,0 +1,211 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    file = Path(path)
+    text = file.read_text()
+    count = text.count(old)
+
+    if count != 1:
+        raise SystemExit(f'{path}: expected one replacement target, found {count}')
+
+    file.write_text(text.replace(old, new, 1))
+
+
+def append_once(path: str, sentinel: str, addition: str) -> None:
+    file = Path(path)
+    text = file.read_text()
+
+    if sentinel in text:
+        raise SystemExit(f'{path}: addition already present')
+
+    file.write_text(text.rstrip() + '\n\n' + addition.strip() + '\n')
+
+
+append_once(
+    'tests/Unit/EnvironmentFileScannerTest.php',
+    "it('supports UTF-8 byte order marks on the first environment key'",
+    '''it('supports UTF-8 byte order marks on the first environment key', function () {
+    $path = tempnam(sys_get_temp_dir(), 'env-guard-');
+    file_put_contents($path, "\\xEF\\xBB\\xBFFIRST_KEY=value\\nSECOND_KEY=value\\n");
+
+    $result = (new EnvironmentFileScanner)->scan($path);
+
+    expect(array_keys($result['keys']))->toBe(['FIRST_KEY', 'SECOND_KEY']);
+
+    @unlink($path);
+});''',
+)
+
+append_once(
+    'tests/Unit/PhpEnvironmentScannerTest.php',
+    "it('supports reordered named arguments, import groups and first-class callables'",
+    '''it('supports reordered named arguments, import groups and first-class callables', function () {
+    file_put_contents($this->root.'/config/services.php', <<<'PHPFILE'
+<?php
+use Illuminate\\Support\\{Env as GroupEnv, Str};
+use Illuminate\\Support\\Str as Other, Illuminate\\Support\\Env as SecondEnv;
+
+return [
+    'one' => env(default: null, key: 'REORDERED_CONFIG'),
+    'two' => GroupEnv::get(default: null, key: 'GROUPED_FACADE'),
+    'three' => SecondEnv::get(key: 'SECOND_IMPORT'),
+    'callable' => env(...),
+];
+PHPFILE);
+    file_put_contents($this->root.'/app/Example.php', <<<'PHPFILE'
+<?php
+use Illuminate\\Support\\Env as LaravelEnv;
+
+$outside = env(default: null, key: 'REORDERED_OUTSIDE');
+$facade = LaravelEnv::get(default: null, key: 'REORDERED_FACADE');
+$dynamic = env(...$arguments);
+$raw = getenv(local_only: true, name: 'NAMED_GETENV');
+$getenvCallable = getenv(...);
+PHPFILE);
+
+    $result = (new PhpEnvironmentScanner)->scan([
+        $this->root.'/config/services.php',
+        $this->root.'/app/Example.php',
+    ], $this->root.'/config');
+    $keys = array_column($result['usages'], 'key');
+
+    expect($keys)->toContain(
+        'REORDERED_CONFIG',
+        'GROUPED_FACADE',
+        'SECOND_IMPORT',
+        'REORDERED_OUTSIDE',
+        'REORDERED_FACADE',
+    )
+        ->and($result['dynamic'])->toHaveCount(1)
+        ->and($result['dynamic'][0]['source'])->toBe('env')
+        ->and(array_column($result['raw'], 'key'))->toContain('NAMED_GETENV');
+});''',
+)
+
+append_once(
+    'tests/Unit/TextEnvironmentScannerTest.php',
+    "it('supports PHPUnit server variables and ignores XML CDATA examples'",
+    '''it('supports PHPUnit server variables and ignores XML CDATA examples', function () {
+    $path = tempnam(sys_get_temp_dir(), 'phpunit-');
+    file_put_contents($path, <<<'XML'
+<php>
+    <!-- <env name="COMMENTED_ENV" value="one"/> -->
+    <![CDATA[<server name="CDATA_SERVER" value="two"/>]]>
+    <env name="REAL_ENV" value="three"/>
+    <server name="REAL_SERVER" value="four"/>
+</php>
+XML);
+
+    $result = (new TextEnvironmentScanner)->scan([$path], []);
+
+    expect($result['phpunit_keys'])->toBe(['REAL_ENV', 'REAL_SERVER']);
+
+    @unlink($path);
+});
+
+it('scans executable frontend expressions without treating strings or regular expressions as usage', function () {
+    $temporary = tempnam(sys_get_temp_dir(), 'vite-');
+    $path = $temporary.'.ts';
+    rename($temporary, $path);
+    file_put_contents($path, <<<'JS'
+// import.meta.env.VITE_LINE_COMMENT
+/* import.meta.env.VITE_BLOCK_COMMENT */
+const quoted = "import.meta.env.VITE_STRING";
+const bracketText = "import.meta.env['VITE_STRING_BRACKET']";
+const regularExpression = /import\\.meta\\.env\\.VITE_REGEX/;
+const rawTemplate = `import.meta.env.VITE_TEMPLATE_TEXT`;
+const actual = import.meta.env.VITE_REAL;
+const bracket = import.meta.env['VITE_BRACKET'];
+const ratio = total / import.meta.env.VITE_DIVISOR;
+const template = `prefix ${import.meta.env.VITE_TEMPLATE_EXPRESSION}`;
+const nested = `outer ${`inner ${import.meta.env.VITE_NESTED_EXPRESSION}`}`;
+const { VITE_DESTRUCTURED: localName, VITE_DEFAULT = 'fallback' } = import.meta.env;
+const { NODE_DESTRUCTURED } = process.env;
+const env = loadEnv(mode, process.cwd(), '');
+console.log(env.VITE_LOAD_ENV);
+console.log(env['VITE_LOAD_BRACKET']);
+const { VITE_LOAD_DESTRUCTURED } = env;
+const { VITE_DIRECT_LOAD } = loadEnv(mode, process.cwd(), '');
+JS);
+
+    $result = (new TextEnvironmentScanner)->scan([$path], ['NODE_DESTRUCTURED']);
+    $keys = array_column($result['usages'], 'key');
+
+    expect($keys)->toContain(
+        'VITE_REAL',
+        'VITE_BRACKET',
+        'VITE_DIVISOR',
+        'VITE_TEMPLATE_EXPRESSION',
+        'VITE_NESTED_EXPRESSION',
+        'VITE_DESTRUCTURED',
+        'VITE_DEFAULT',
+        'NODE_DESTRUCTURED',
+        'VITE_LOAD_ENV',
+        'VITE_LOAD_BRACKET',
+        'VITE_LOAD_DESTRUCTURED',
+        'VITE_DIRECT_LOAD',
+    )
+        ->and($keys)->not->toContain(
+            'VITE_LINE_COMMENT',
+            'VITE_BLOCK_COMMENT',
+            'VITE_STRING',
+            'VITE_STRING_BRACKET',
+            'VITE_REGEX',
+            'VITE_TEMPLATE_TEXT',
+        )
+        ->and(array_count_values($keys)['VITE_REAL'] ?? 0)->toBe(1);
+
+    @unlink($path);
+});''',
+)
+
+append_once(
+    'tests/Feature/EnvGuardTest.php',
+    "it('reports used keys documented only outside configured reference files'",
+    '''it('reports used keys documented only outside configured reference files', function () {
+    file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\\n");
+    file_put_contents($this->root.'/.env.example', "APP_NAME=\\n");
+    file_put_contents($this->root.'/.env.testing', "APP_NAME=\\nCOMPARISON_ONLY_TOKEN=testing\\n");
+    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\\n");
+    file_put_contents($this->root.'/config/services.php', "<?php return ['token' => env('COMPARISON_ONLY_TOKEN')];\\n");
+
+    $result = buildEnvGuard($this->root)->inspect();
+    $codes = findingCodesFor($result['findings'], 'COMPARISON_ONLY_TOKEN');
+
+    expect($codes)->toContain('missing-from-reference-file')
+        ->and($codes)->not->toContain('used-but-undeclared', 'missing-from-example');
+});
+
+it('disables reference completeness checks when no reference files are configured', function () {
+    file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\\nLOCAL_ONLY=value\\n");
+    file_put_contents($this->root.'/.env.testing', "APP_NAME=\\n");
+    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\\n");
+
+    $result = buildEnvGuard($this->root, ['reference_files' => []])->inspect();
+
+    expect(findingCodesFor($result['findings'], 'LOCAL_ONLY'))->not->toContain(
+        'missing-from-example',
+        'missing-from-reference-file',
+    );
+});
+
+it('avoids per-key documentation cascades when every reference file is missing', function () {
+    file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\\n");
+    file_put_contents($this->root.'/.env.testing', "APP_NAME=\\n");
+    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\\n");
+
+    $result = buildEnvGuard($this->root)->inspect();
+
+    expect(array_column($result['findings'], 'code'))->toContain('missing-reference-file')
+        ->and(findingCodesFor($result['findings'], 'APP_NAME'))->not->toContain(
+            'missing-from-example',
+            'missing-from-reference-file',
+        );
+});
+
+it('reports raw environment access even when the key casing differs', function () {
+    file_put_contents($this->root.'/.env', "PROJECT_TOKEN=value\\n");
+    file_put_contents($this->root.'/.env.exampl
