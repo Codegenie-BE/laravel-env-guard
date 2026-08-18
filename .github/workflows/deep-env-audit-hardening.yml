@@ -50,24 +50,19 @@ jobs:
 
           scanner = Path('src/Scanners/TextEnvironmentScanner.php')
           text = scanner.read_text()
-          old = r'''        if ($this->isInfrastructureFile($file) && ! $this->isJavaScriptFile($file)) {
-              $contents = $this->maskPattern(
-                  $contents,
-                  '~([\'\"])(?:\\.|(?!\1).)*\1(*SKIP)(*F)|\#[^\r\n]*~',
-              );
-          }
-          '''
-          new = '''        if ($this->isInfrastructureFile($file) && ! $this->isJavaScriptFile($file)) {
+          start_marker = "        if ($this->isInfrastructureFile($file) && ! $this->isJavaScriptFile($file)) {"
+          end_marker = "\n\n        return $contents;"
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+
+          if start < 0 or end < 0:
+              raise SystemExit('Could not locate infrastructure comment masking block')
+
+          replacement = '''        if ($this->isInfrastructureFile($file) && ! $this->isJavaScriptFile($file)) {
               $contents = $this->maskInfrastructureComments($contents);
-          }
-          '''
-
-          if text.count(old) != 1:
-              raise SystemExit(f'Expected one infrastructure comment block, found {text.count(old)}')
-
-          text = text.replace(old, new, 1)
-          marker = '''    private function maskPattern(string $contents, string $pattern): string
-          '''
+          }'''
+          text = text[:start] + replacement + text[end:]
+          marker = "    private function maskPattern(string $contents, string $pattern): string\n"
           method = r'''    private function maskInfrastructureComments(string $contents): string
           {
               $masked = $contents;
