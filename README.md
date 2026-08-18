@@ -11,15 +11,13 @@
 
 **Catch Laravel environment drift and unsafe `env()` usage before configuration caching turns it into a deployment bug.**
 
-Laravel Env Guard automatically audits environment-variable usage during guarded Artisan boots in development. Every audit reads the current project files directly, catches environment drift before it becomes a deployment problem, and does not require a separate command or persistent findings cache.
+Laravel Env Guard automatically audits environment-variable usage during guarded Artisan boots in development. Every audit reads the current project files directly, compares the environment files that actually exist, and does not require a separate command, a persistent findings cache, or a specifically named `.env.example` file.
 
 ```bash
 composer require --dev codegenie-be/laravel-env-guard
 ```
 
-That is enough. Laravel package discovery registers the guard automatically.
-
-By default it runs only when the application environment is `local`.
+Laravel package discovery registers the guard automatically. By default it runs only when the application environment is `local`.
 
 - [Packagist](https://packagist.org/packages/codegenie-be/laravel-env-guard)
 - [Read the full scenario model](docs/scenarios.md)
@@ -39,16 +37,101 @@ Laravel Env Guard combines key-only environment-file inspection with lightweight
 | duplicate active key in an environment file | Error |
 | key differs only by case | Error |
 | project uses a non-optional key not declared in any scanned env file | Warning |
-| active `.env` key is missing from the configured reference files | Warning |
-| used key exists only outside the configured reference files | Warning |
-| active reference key is missing from the active env file | Warning |
-| used key is missing from `.env.testing` or another standalone comparison file | Warning |
+| an actively declared key is missing from another discovered `.env` / `.env.*` file | Warning |
+| explicitly configured reference or comparison files drift from the project | Warning |
 | declared key appears unused | Warning |
 | dynamic `env()` inside `config/` | Warning |
 | config is cached while the guard is active | Warning |
-| reference or active env file is missing | Warning |
+| Laravel's active environment file is missing | Warning |
+| an explicitly configured reference file is missing | Warning |
 
-Errors fail fast in guarded development environments by default. Every guarded audit reads the current project state and logs its findings. During Artisan commands, current warnings and errors are also written to STDERR by default.
+Errors fail fast in guarded development environments by default. During Artisan commands, current warnings and errors are written to STDERR as a key-only report.
+
+## Environment-file discovery and consistency
+
+The default behavior is intentionally **name-agnostic**.
+
+Env Guard asks Laravel for its configured `environmentPath()` and active environment filename, then automatically discovers:
+
+- `.env`, when present;
+- every plaintext `.env.*` file in the same environment directory;
+- renamed templates such as `.env.template`, `.env.sample`, `.env.production.example`, or another `.env.*` name;
+- `.env.dist`.
+
+It does **not** require `.env.example`. If a project renames or removes `.env.example`, that is not a warning by itself.
+
+Encrypted files and common backup artifacts are skipped automatically because they are not normal plaintext environment sources:
+
+- `*.encrypted`
+- `*.bak`
+- `*.backup`
+- `*.old`
+
+Given:
+
+```dotenv
+# .env
+APP_NAME=Codegenie
+ACME_TOKEN=local-secret
+```
+
+and:
+
+```dotenv
+# .env.production
+APP_NAME=Codegenie
+```
+
+Env Guard reports that `ACME_TOKEN` is missing from `.env.production`.
+
+The inverse is also checked. If `.env.production` contains an actively declared key that `.env` does not contain, the active `.env` receives a `missing-from-environment-file` warning unless the key is already supplied by the runtime environment.
+
+Env Guard intentionally compares **keys**, not values. Different environments are expected to use different credentials, URLs, database names, application keys, and debug settings. Environment values are never included in findings.
+
+### Commented template keys
+
+A renamed template may document optional keys with comments:
+
+```dotenv
+APP_NAME=Laravel
+# DB_HOST=127.0.0.1
+# DB_PORT=3306
+```
+
+Commented assignments in a **non-active** discovered environment file count as that file's documented key inventory. They therefore do not need a special `.env.example` filename.
+
+A commented assignment in Laravel's **active** environment file does not count as an active value. For example, if `.env.local` is the active Laravel file and contains only `# SERVICE_TOKEN=`, while another environment file actively declares `SERVICE_TOKEN`, Env Guard still reports that `SERVICE_TOKEN` is missing from the active environment.
+
+## Explicit reference and comparison mode
+
+Most projects do not need to configure environment filenames manually.
+
+`reference_files` remains available when a project intentionally wants documentation/reference semantics instead of the default peer comparison. Only files explicitly placed in `reference_files` can produce `missing-reference-file`.
+
+For example:
+
+```php
+'reference_files' => [
+    '.env.contract',
+],
+```
+
+If `.env.contract` does not exist, Env Guard reports it because the project explicitly asked for that file.
+
+`compare_files` can add explicit standalone environment files, including files outside automatic discovery when needed.
+
+For projects that deliberately use partial Vite-style layer files and do not want every `.env.*` file treated as a complete peer, disable automatic discovery and list only the intended standalone files:
+
+```php
+'discover_environment_files' => false,
+
+'compare_files' => [
+    '.env.testing',
+    '.env.production',
+],
+```
+
+This opt-out is explicit; automatic discovery and peer comparison are the default.
 
 ## Why `env()` outside `config/` matters
 
@@ -77,46 +160,17 @@ Reported:
 $token = env('ACME_TOKEN');
 ```
 
-## Environment-file consistency
-
-Given:
-
-```dotenv
-# .env
-APP_NAME=Codegenie
-ACME_TOKEN=local-secret
-OLD_API_KEY=old-value
-```
-
-```dotenv
-# .env.example
-APP_NAME=Laravel
-ACME_TOKEN=
-```
-
-and:
-
-```php
-// config/services.php
-return [
-    'acme' => ['token' => env('ACME_TOKEN')],
-];
-```
-
-Laravel Env Guard can identify `OLD_API_KEY` as possibly unused without ever persisting `old-value` or `local-secret`.
-
-It intentionally compares **keys**, not secret values. Different environments are expected to use different credentials, URLs, database names, application keys, and debug settings.
-
 ## Laravel 12 and 13 scenarios
 
 The package understands the environment mechanisms used by current Laravel applications:
 
 - the active file reported by Laravel's `environmentFilePath()`;
 - custom environment directories through `environmentPath()`;
-- `.env.example` documentation, including commented optional assignments;
+- automatic plaintext `.env` / `.env.*` discovery;
+- renamed template/reference filenames without a hard-coded `.env.example` dependency;
+- commented optional assignments in non-active environment templates;
 - `.env.testing`;
-- explicitly configured standalone environment files such as `.env.testing`;
-- optional discovery of additional `.env.*` files for diagnostics without assuming they are complete standalone environments;
+- explicitly configured reference and standalone comparison files;
 - environment variables supplied by `phpunit.xml` through `<env>` or `<server>`;
 - external/server variables that already satisfy a key;
 - Laravel 12/13 stock optional connection, driver, service, logging, session and authentication keys;
@@ -132,7 +186,7 @@ See [the full scenario model](docs/scenarios.md) for edge cases and intentional 
 
 ## Automatic development-only execution
 
-The default configuration is deliberately conservative:
+The default configuration is deliberately conservative about **when** the audit runs:
 
 ```php
 'enabled' => true,
@@ -146,9 +200,9 @@ The default configuration is deliberately conservative:
 'fail_on_error' => true,
 ```
 
-Production and staging therefore do no source scan by default. Normal HTTP requests are also skipped by default because `console_only` is `true`; set it to `false` only when intentionally opting into a full audit during non-console boots.
+Production and staging therefore do no source scan by default. Normal HTTP requests are skipped by default because `console_only` is `true`.
 
-Testing is also excluded by default because Laravel boots an application repeatedly during a test suite. If your project wants automatic guard execution during tests:
+Testing is also excluded by default because Laravel boots an application repeatedly during a test suite. If a project wants automatic guard execution during tests:
 
 ```php
 // config/env-guard.php
@@ -158,7 +212,7 @@ Testing is also excluded by default because Laravel boots an application repeate
 ],
 ```
 
-You can publish the configuration when customization is needed:
+Publish the configuration only when customization is needed:
 
 ```bash
 php artisan vendor:publish --tag=env-guard-config
@@ -171,14 +225,14 @@ Publishing is optional; the guard itself never requires an Artisan command.
 When a guarded application boots through Artisan and findings exist, Env Guard writes a compact key-only report to STDERR:
 
 ```text
-Laravel Env Guard: 2 warning(s), 0 error(s)
-WARNING [missing-from-example] CUSTOM_KEY: Environment key CUSTOM_KEY exists in the active environment file but is not documented in .env.example.
-  .env:42
-WARNING [possibly-unused-key] CUSTOM_KEY: Environment key CUSTOM_KEY is declared but no application-owned usage was found.
-  .env:42
+Laravel Env Guard: 1 warning(s), 0 error(s)
+WARNING [missing-from-environment-file] CUSTOM_KEY: Environment key CUSTOM_KEY is present in another scanned environment file but missing from .env.production.
+  .env.production
 ```
 
-Each guarded Artisan boot performs a complete audit of the current relevant files before reporting. Findings are logged for that audit as well, so console and log output describe the same current project state without consulting persistent scan state.
+A missing `.env.example` is not reported unless `.env.example` was explicitly configured in `reference_files`.
+
+Each guarded Artisan boot performs a complete audit of the current relevant files. Findings are logged for that same audit; no persistent result cache is consulted.
 
 Disable console reporting without disabling the guard:
 
@@ -190,46 +244,44 @@ No environment value is included in console output.
 
 ## Optional Laravel framework keys
 
-Laravel 12 and 13 ship config definitions for many settings that a given application may never use. Examples include:
+Laravel 12 and 13 ship config definitions for many settings that a given application may never use. Examples include alternative database settings, Redis options, database cache/queue settings, SQS/DynamoDB/S3 settings, optional SMTP settings, Postmark/Resend/Slack credentials, session overrides and secondary logging channels.
 
-- alternative database URL/socket/SSL settings;
-- Redis connection and retry settings;
-- database cache and queue connection details;
-- SQS, Beanstalkd, DynamoDB and S3 settings;
-- SMTP transport details and optional mailer services;
-- Postmark, Resend, AWS and Slack credentials;
-- optional session storage/cookie overrides;
-- optional logging channels and Papertrail/Slack settings;
-- optional authentication overrides.
+The existence of `env('REDIS_URL')` or `env('MAIL_URL')` in stock Laravel config does not by itself mean every project must declare that key.
 
-The existence of `env('REDIS_URL')` or `env('MAIL_URL')` in a stock Laravel config file does **not** by itself mean every project must document that key.
+By default, Env Guard suppresses `used-but-undeclared` noise for a maintained exact list of Laravel 12/13 optional framework keys only while the key is genuinely inactive.
 
-By default, Env Guard therefore suppresses `used-but-undeclared` noise for a maintained exact list of Laravel 12/13 optional framework keys **only while the key is genuinely inactive**.
+The key becomes fully auditable as soon as it is:
 
-The key becomes fully auditable again as soon as it is:
-
-- actively declared in `.env`;
-- declared in a configured reference or comparison file;
-- declared in a discovered environment file;
+- actively declared in any scanned environment file;
+- documented in a discovered non-active environment file;
+- declared in an explicitly configured reference or comparison file;
 - supplied through the real runtime environment.
 
-For example, an application that never configures `LOG_DAILY_DAYS` gets no warning merely because Laravel's `config/logging.php` knows about it. If the project adds this to `.env`:
+For example, a project that never configures `LOG_DAILY_DAYS` receives no warning merely because Laravel's `config/logging.php` knows about it. If the project adds `LOG_DAILY_DAYS` to one environment file but not its other discovered peers, normal environment-file drift reporting applies.
 
-```dotenv
-LOG_DAILY_DAYS=30
-```
+Core project selectors such as `DB_CONNECTION`, `CACHE_STORE`, `QUEUE_CONNECTION`, `SESSION_DRIVER`, `MAIL_MAILER`, `LOG_CHANNEL`, and `FILESYSTEM_DISK` are deliberately not part of optional-key suppression.
 
-but omits it from `.env.example`, Env Guard reports `missing-from-example` normally.
-
-Core project selectors such as `DB_CONNECTION`, `CACHE_STORE`, `QUEUE_CONNECTION`, `SESSION_DRIVER`, `MAIL_MAILER`, `LOG_CHANNEL`, and `FILESYSTEM_DISK` are deliberately not part of this optional-key suppression.
-
-Strict projects can restore the previous literal behavior:
+Strict projects can restore literal behavior:
 
 ```php
 'suppress_inactive_laravel_keys' => false,
 ```
 
 The optional-key policy uses exact names rather than broad prefixes, so custom project keys are not silently hidden.
+
+## `.env.testing` and `phpunit.xml`
+
+Laravel can use `.env.testing` instead of `.env` during Pest/PHPUnit runs. Because `.env.testing` matches `.env.*`, it is discovered automatically by default when it exists.
+
+A testing value may also be provided through `phpunit.xml`:
+
+```xml
+<php>
+    <env name="CACHE_STORE" value="array"/>
+</php>
+```
+
+When `CACHE_STORE` is absent from `.env.testing` but supplied through either an `<env>` or `<server>` entry in `phpunit.xml`, the guard treats it as supplied for the testing environment.
 
 ## Vite
 
@@ -258,36 +310,13 @@ export default defineConfig(({ mode }) => {
 });
 ```
 
-Built-in Vite values such as `MODE`, `DEV`, `PROD`, `SSR`, and `BASE_URL` are not treated as missing Laravel project keys. References inside comments, ordinary strings, regular-expression literals, or the raw text of a template literal are ignored; executable `${...}` template expressions are scanned.
+Built-in Vite values such as `MODE`, `DEV`, `PROD`, `SSR`, and `BASE_URL` are not treated as missing Laravel project keys. References inside comments, ordinary strings, regular-expression literals, or raw template-literal text are ignored; executable `${...}` template expressions are scanned.
 
-## `.env.testing` and `phpunit.xml`
-
-Laravel can use `.env.testing` instead of `.env` during Pest/PHPUnit runs. A testing value may also be provided through `phpunit.xml`:
-
-```xml
-<php>
-    <env name="CACHE_STORE" value="array"/>
-</php>
-```
-
-When `CACHE_STORE` is absent from `.env.testing` but present as either an `<env>` or `<server>` entry in `phpunit.xml`, the guard treats it as supplied for the testing environment.
-
-Completeness checks apply only to files listed in `compare_files`. Automatic `.env.*` discovery is disabled by default because Vite files such as `.env.local` and `.env.production` may layer on top of `.env` instead of replacing it. Enable discovery when you want diagnostics for additional files, or list a known standalone Laravel environment file explicitly in `compare_files`.
-
-## Commented example keys
-
-Current Laravel skeletons document optional variables by commenting out assignments:
-
-```dotenv
-# DB_HOST=127.0.0.1
-# DB_PORT=3306
-```
-
-Laravel Env Guard counts those keys as documented but does not require them in `.env`. A commented assignment in the active `.env`, however, is not treated as an active value.
+If a project uses Vite `.env.local` / `.env.[mode]` files purely as partial layers rather than complete environment contracts, disable automatic discovery and explicitly list only the files whose key inventories should be compared.
 
 ## Dynamic keys
 
-Static analysis cannot reliably resolve this:
+Static analysis cannot reliably resolve:
 
 ```php
 env('SERVICE_'.$driver);
@@ -301,18 +330,21 @@ env($key);
 
 The guard reports the location instead of guessing. A dynamic lookup outside `config/` remains a blocking Laravel config-cache compatibility issue.
 
+## Raw PHP environment access
+
+For project environment keys, these patterns are reported:
+
+```php
+getenv('SERVICE_TOKEN');
+$_ENV['SERVICE_TOKEN'];
+$_SERVER['SERVICE_TOKEN'];
+```
+
+The scanner intentionally ignores unrelated operating-system variables that are not part of the project's scanned environment contract.
+
 ## Likely unused keys
 
-Unused detection is intentionally phrased as **possibly unused**. A key can be consumed outside application-owned Laravel source, for example by:
-
-- a package in `vendor/`;
-- Laravel/framework tooling;
-- Docker or Sail;
-- a deployment script;
-- a hosting platform;
-- a process manager;
-- code that dynamically constructs the key;
-- a runtime outside Laravel.
+Unused detection is intentionally phrased as **possibly unused**. A key can be consumed outside application-owned Laravel source by a package, framework tooling, Docker, Sail, deployment automation, hosting infrastructure, a process manager, dynamic code, or another runtime.
 
 Laravel-owned `BCRYPT_ROUNDS`, `BROADCAST_CONNECTION`, `PHP_CLI_SERVER_WORKERS` and `LARAVEL_ENV_ENCRYPTION_KEY`, plus the default skeleton `VITE_APP_NAME`, are excluded from unused diagnostics by default.
 
@@ -329,39 +361,35 @@ Suppress additional intentional cases explicitly:
 ],
 ```
 
-The package deliberately prunes `vendor/`, `node_modules/`, `.git/`, `storage/`, and `bootstrap/cache/` even when a configured scan path points at the project root. Scanning dependencies or generated state would create false environment requirements and unnecessary boot-time work. Explicit extensionless project files such as `Dockerfile` are supported, while binary files in configured project directories are skipped.
+## Filesystem and performance
 
-## Performance
-
-Every guarded audit reparses the current application-owned source and configured environment files. Laravel Env Guard does not persist findings or a source fingerprint between processes.
+Every guarded audit reparses the current application-owned source and current environment files. Laravel Env Guard does not persist findings or a source fingerprint between processes.
 
 Automatic full-project scans are console-first by default, so ordinary HTTP requests do not repeatedly pay the static-analysis cost. Direct calls to `EnvGuard::inspect()` always inspect the current filesystem state.
 
-The scan remains bounded: dependency/generated trees are pruned, symlink targets are ignored, and files above the configured size limit are skipped.
-
-Change the maximum scanned file size if necessary:
+The scanner deliberately prunes `vendor/`, `node_modules/`, `.git/`, `storage/`, and `bootstrap/cache/`, ignores symlink targets, skips binary configured project files, and enforces a configurable maximum source file size:
 
 ```php
 'max_file_size' => 1_048_576,
 ```
 
-There is no `laravel-env-guard.json` result cache to clear. When upgrading from a version that created one, the next audit removes the legacy default cache file and any previously configured custom `cache_path`.
+There is no `laravel-env-guard.json` result cache to clear. When upgrading from a cache-based version, the next audit removes the legacy default cache file and any previously configured custom `cache_path`.
 
 ## Custom Laravel environment paths
 
-The active env file is not hard-coded to `base_path('.env')`. Laravel Env Guard asks the running Laravel application for its environment path and active environment file, so applications using `useEnvironmentPath()` or `loadEnvironmentFrom()` remain supported.
+The active env file is not hard-coded to `base_path('.env')`. Env Guard asks the running Laravel application for `environmentPath()` and `environmentFilePath()`. Automatic discovery happens inside that configured environment directory, so `useEnvironmentPath()` and `loadEnvironmentFrom()` remain supported.
 
 ## Long-running processes
 
-With the default `console_only` setting, Laravel Env Guard runs when a guarded console process boots. That includes Artisan-started long-running processes such as queue workers, Reverb, and Octane startup, but normal HTTP request boots are skipped. Reload/restart a long-running process after changing source or environment files when you want its startup audit to run again.
+With `console_only` enabled, automatic audits run when a guarded console process boots. That includes Artisan-started long-running processes such as queue workers, Reverb, and Octane startup, while normal HTTP request boots are skipped.
 
-Set `console_only` to `false` only if your application deliberately wants automatic audits during non-console boots.
+Restart or reload a long-running process after source or environment changes when you want its startup audit to run again.
 
 ## Encrypted environment files
 
-Laravel supports `.env.encrypted` files. Laravel Env Guard does not auto-discover encrypted files and does not handle Laravel's encryption key.
+Laravel supports encrypted environment files. Env Guard deliberately excludes `*.encrypted` from automatic discovery and does not handle decryption keys.
 
-This is intentional: an encrypted environment file cannot be audited key-by-key without decrypting its contents, and secret decryption is outside this package's responsibility. Compare the plaintext `.env.example` or another non-secret reference file instead.
+An encrypted environment file cannot be audited key-by-key without decrypting it, and secret decryption is outside this package's responsibility. Keep any non-secret environment contract in whichever plaintext `.env` / `.env.*` file naming scheme your project uses.
 
 ## Configuration
 
@@ -376,9 +404,9 @@ return [
     'console_output' => true,
     'suppress_inactive_laravel_keys' => true,
 
-    'reference_files' => ['.env.example'],
-    'compare_files' => ['.env.testing'],
-    'discover_environment_files' => false,
+    'reference_files' => [],
+    'compare_files' => [],
+    'discover_environment_files' => true,
 
     'scan_paths' => [
         'app',
@@ -441,7 +469,7 @@ CI tests every valid Laravel/PHP combination in that matrix and runs additional 
 
 ## Security model
 
-Laravel Env Guard follows several hard rules:
+Laravel Env Guard follows hard rules:
 
 - no telemetry;
 - no network requests;
@@ -473,7 +501,7 @@ composer audit
 composer test:coverage
 ```
 
-The E2E suite installs the exact package into fresh Laravel 12 and 13 applications and verifies package discovery, optional framework-key behavior, console/log diagnostics, secret non-disclosure, blocking unsafe `env()` usage and configuration-cache transitions.
+The E2E suite installs the exact package into fresh Laravel 12 and 13 applications and verifies package discovery, optional framework-key behavior, environment-file drift, console/log diagnostics, secret non-disclosure, blocking unsafe `env()` usage and configuration-cache transitions.
 
 ## Support and contributing
 
