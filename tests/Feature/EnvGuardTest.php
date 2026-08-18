@@ -122,6 +122,36 @@ it('checks explicitly configured standalone environment files for completeness',
     expect($matches)->toHaveCount(1);
 });
 
+it('prunes dependency and generated directories when the project root is scanned', function () {
+    file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\n");
+    file_put_contents($this->root.'/.env.example', "APP_NAME=\n");
+    file_put_contents($this->root.'/.env.testing', "APP_NAME=\n");
+    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\n");
+    file_put_contents($this->root.'/app/Visible.php', "<?php env('VISIBLE_ROOT_KEY');\n");
+
+    foreach (['vendor/package', 'node_modules/package', '.git/hooks', 'storage/logs'] as $directory) {
+        mkdir($this->root.'/'.$directory, 0777, true);
+        file_put_contents($this->root.'/'.$directory.'/Ignored.php', "<?php env('IGNORED_".strtoupper(str_replace(['/', '.'], '_', $directory))."');\n");
+    }
+
+    file_put_contents($this->root.'/bootstrap/cache/Ignored.php', "<?php env('IGNORED_BOOTSTRAP_CACHE');\n");
+
+    $result = buildEnvGuard($this->root, [
+        'scan_paths' => [$this->root],
+        'project_directories' => [$this->root],
+    ])->inspect();
+    $keys = array_values(array_filter(array_column($result['findings'], 'key')));
+
+    expect($keys)->toContain('VISIBLE_ROOT_KEY')
+        ->and($keys)->not->toContain(
+            'IGNORED_VENDOR_PACKAGE',
+            'IGNORED_NODE_MODULES_PACKAGE',
+            'IGNORED__GIT_HOOKS',
+            'IGNORED_STORAGE_LOGS',
+            'IGNORED_BOOTSTRAP_CACHE',
+        );
+});
+
 it('reuses cached findings until relevant file metadata changes', function () {
     file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\n");
     file_put_contents($this->root.'/.env.example', "APP_NAME=\n");

@@ -202,7 +202,7 @@ final class PhpEnvironmentScanner
         bool $inConfig,
         string $source,
     ): void {
-        $argumentIndex = $this->nextSignificantIndex($tokens, $openIndex);
+        $argumentIndex = $this->environmentKeyArgumentIndex($tokens, $openIndex);
 
         if ($argumentIndex === null || ! is_array($tokens[$argumentIndex]) || $tokens[$argumentIndex][0] !== T_CONSTANT_ENCAPSED_STRING) {
             $result['dynamic'][] = [
@@ -322,6 +322,34 @@ final class PhpEnvironmentScanner
         }
 
         return $usages;
+    }
+
+    /** @param array<int, array<int, mixed>|string> $tokens */
+    private function environmentKeyArgumentIndex(array $tokens, int $openIndex): ?int
+    {
+        $index = $this->nextSignificantIndex($tokens, $openIndex);
+
+        if ($index === null) {
+            return null;
+        }
+
+        $token = $tokens[$index];
+
+        if (! is_array($token) || $token[0] !== T_STRING) {
+            return $index;
+        }
+
+        $colonIndex = $this->nextSignificantIndex($tokens, $index);
+
+        if ($colonIndex === null || $tokens[$colonIndex] !== ':') {
+            return $index;
+        }
+
+        if (strtolower($token[1]) !== 'key') {
+            return null;
+        }
+
+        return $this->nextSignificantIndex($tokens, $colonIndex);
     }
 
     /** @param array<int, array<int, mixed>|string> $tokens */

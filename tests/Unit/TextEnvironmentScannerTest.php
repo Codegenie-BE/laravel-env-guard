@@ -35,6 +35,50 @@ it('detects Vite, Blade, phpunit and infrastructure usage', function () {
     @rmdir($root);
 });
 
+it('ignores environment references inside text comments', function () {
+    $root = sys_get_temp_dir().'/env-guard-comments-'.bin2hex(random_bytes(4));
+    mkdir($root, 0777, true);
+
+    $vite = $root.'/app.ts';
+    $blade = $root.'/view.blade.php';
+    $phpunit = $root.'/phpunit.xml';
+    $compose = $root.'/compose.yaml';
+
+    file_put_contents($vite, <<<'JS'
+// import.meta.env.VITE_LINE_COMMENT
+/* import.meta.env.VITE_BLOCK_COMMENT */
+const actual = import.meta.env.VITE_REAL;
+JS);
+    file_put_contents($blade, "{{-- {{ env('BLADE_COMMENT') }} --}}\n{{ env('BLADE_REAL') }}\n");
+    file_put_contents($phpunit, '<php><!-- <env name="COMMENTED_TEST" value="1"/> --><env name="REAL_TEST" value="1"/></php>');
+    file_put_contents($compose, <<<'YAML'
+# COMMENTED_INFRA: ${COMMENTED_INFRA}
+services:
+  app:
+    environment:
+      REAL_INFRA: ${REAL_INFRA}
+      LABEL: "#${QUOTED_INFRA}"
+YAML);
+
+    $result = (new TextEnvironmentScanner)->scan([$vite, $blade, $phpunit, $compose], [
+        'COMMENTED_INFRA',
+        'REAL_INFRA',
+        'QUOTED_INFRA',
+    ]);
+    $usageKeys = array_column($result['usages'], 'key');
+
+    expect($usageKeys)->toContain('VITE_REAL', 'REAL_INFRA', 'QUOTED_INFRA')
+        ->and($usageKeys)->not->toContain('VITE_LINE_COMMENT', 'VITE_BLOCK_COMMENT', 'COMMENTED_INFRA')
+        ->and(array_column($result['blade_env'], 'key'))->toBe(['BLADE_REAL'])
+        ->and($result['phpunit_keys'])->toBe(['REAL_TEST']);
+
+    foreach ([$vite, $blade, $phpunit, $compose] as $file) {
+        @unlink($file);
+    }
+
+    @rmdir($root);
+});
+
 it('detects Vite loadEnv access', function () {
     $path = tempnam(sys_get_temp_dir(), 'vite-');
     file_put_contents($path, <<<'JS'

@@ -31,3 +31,6 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Cache invalidation now includes behavior-affecting guard configuration and the presence of documented runtime environment keys without hashing or persisting secret values.
 - Dotenv interpolation tracking now follows `phpdotenv` comment boundaries so `${KEY}` references inside inline comments are ignored while quoted content remains valid.
 - The existing 80% test-coverage requirement is now enforced by the permanent GitHub Actions quality job.
+- Recursive root scans now prune dependency, VCS, storage, and bootstrap cache trees before traversal.
+- Text scanning now masks Blade, XML/HTML, JavaScript-style, and infrastructure comments while preserving diagnostic line offsets.
+- PHP environment scanning now recognizes literal `key:` named arguments for `env()` and `Env::get()`.

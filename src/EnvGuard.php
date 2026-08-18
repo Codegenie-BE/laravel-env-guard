@@ -7,6 +7,7 @@ use Codegenie\EnvGuard\Scanners\PhpEnvironmentScanner;
 use Codegenie\EnvGuard\Scanners\TextEnvironmentScanner;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Env;
+use RecursiveCallbackFilterIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
@@ -414,6 +415,10 @@ final class EnvGuard
         }
 
         foreach (array_unique($paths) as $path) {
+            if ($this->isExcludedSourcePath($path)) {
+                continue;
+            }
+
             if (is_file($path)) {
                 $this->maybeAddSourceFile($files, $path, $maxSize);
 
@@ -424,19 +429,9 @@ final class EnvGuard
                 continue;
             }
 
-            $iterator = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($path, RecursiveDirectoryIterator::SKIP_DOTS),
-            );
-
             /** @var SplFileInfo $info */
-            foreach ($iterator as $info) {
-                if ($info->isLink() || ! $info->isFile()) {
-                    continue;
-                }
-
-                $normalized = str_replace('\\', '/', $info->getPathname());
-
-                if (str_contains($normalized, '/bootstrap/cache/') || str_contains($normalized, '/storage/')) {
+            foreach ($this->sourceFilesIn($path) as $info) {
+                if (! $info->isFile()) {
                     continue;
                 }
 
@@ -457,17 +452,13 @@ final class EnvGuard
 
             $directory = $this->resolveBasePath($configuredDirectory);
 
-            if (! is_dir($directory)) {
+            if (! is_dir($directory) || $this->isExcludedSourcePath($directory)) {
                 continue;
             }
 
-            $iterator = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS),
-            );
-
             /** @var SplFileInfo $info */
-            foreach ($iterator as $info) {
-                if (! $info->isLink() && $info->isFile()) {
+            foreach ($this->sourceFilesIn($directory) as $info) {
+                if ($info->isFile()) {
                     $this->maybeAddSourceFile($files, $info->getPathname(), $maxSize, true);
                 }
             }
@@ -479,10 +470,54 @@ final class EnvGuard
         return $files;
     }
 
+    /** @return iterable<int|string, SplFileInfo> */
+    private function sourceFilesIn(string $directory): iterable
+    {
+        $iterator = new RecursiveDirectoryIterator($directory, RecursiveDirectoryIterator::SKIP_DOTS);
+        $filtered = new RecursiveCallbackFilterIterator(
+            $iterator,
+            function (SplFileInfo $info): bool {
+                if ($info->isLink()) {
+                    return false;
+                }
+
+                return ! $this->isExcludedSourcePath($info->getPathname());
+            },
+        );
+
+        return new RecursiveIteratorIterator($filtered);
+    }
+
+    private function isExcludedSourcePath(string $path): bool
+    {
+        $base = rtrim(strtolower(str_replace('\\', '/', $this->app->basePath())), '/');
+        $normalized = strtolower(str_replace('\\', '/', $path));
+
+        if ($normalized === $base) {
+            return false;
+        }
+
+        $prefix = $base.'/';
+
+        if (! str_starts_with($normalized, $prefix)) {
+            return false;
+        }
+
+        $relative = ltrim(substr($normalized, strlen($prefix)), '/');
+
+        foreach (['.git', 'vendor', 'node_modules', 'storage', 'bootstrap/cache'] as $directory) {
+            if ($relative === $directory || str_starts_with($relative, $directory.'/')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @param list<string> $files */
     private function maybeAddSourceFile(array &$files, string $path, int $maxSize, bool $allowAnyText = false): void
     {
-        if (! is_file($path) || ! is_readable($path) || is_link($path)) {
+        if ($this->isExcludedSourcePath($path) || ! is_file($path) || ! is_readable($path) || is_link($path)) {
             return;
         }
 
