@@ -103,7 +103,7 @@ jobs:
             quality-composer-
 
       - name: Pin Laravel 13 development dependencies
-        run: composer require --dev 'laravel/framework:^13.0' 'orchestra/testbench:^11.0' 'pestphp/pest:^4.0' --no-update --no-interaction
+        run: composer require --dev 'laravel/framework:~13.0' 'orchestra/testbench:~11.0' 'pestphp/pest:~4.0' --no-update --no-interaction
 
       - name: Install dependencies
         run: composer update --prefer-stable --prefer-dist --with-all-dependencies --no-interaction --no-progress
@@ -128,39 +128,39 @@ jobs:
         runtime:
           - php: '8.2'
             laravel: '12'
-            framework: '^12.0'
-            testbench: '^10.0'
-            pest: '^3.0'
+            framework: '~12.0'
+            testbench: '~10.0'
+            pest: '~3.0'
           - php: '8.3'
             laravel: '12'
-            framework: '^12.0'
-            testbench: '^10.0'
-            pest: '^3.0'
+            framework: '~12.0'
+            testbench: '~10.0'
+            pest: '~3.0'
           - php: '8.4'
             laravel: '12'
-            framework: '^12.0'
-            testbench: '^10.0'
-            pest: '^3.0'
+            framework: '~12.0'
+            testbench: '~10.0'
+            pest: '~3.0'
           - php: '8.5'
             laravel: '12'
-            framework: '^12.0'
-            testbench: '^10.0'
-            pest: '^3.0'
+            framework: '~12.0'
+            testbench: '~10.0'
+            pest: '~3.0'
           - php: '8.3'
             laravel: '13'
-            framework: '^13.0'
-            testbench: '^11.0'
-            pest: '^4.0'
+            framework: '~13.0'
+            testbench: '~11.0'
+            pest: '~4.0'
           - php: '8.4'
             laravel: '13'
-            framework: '^13.0'
-            testbench: '^11.0'
-            pest: '^4.0'
+            framework: '~13.0'
+            testbench: '~11.0'
+            pest: '~4.0'
           - php: '8.5'
             laravel: '13'
-            framework: '^13.0'
-            testbench: '^11.0'
-            pest: '^4.0'
+            framework: '~13.0'
+            testbench: '~11.0'
+            pest: '~4.0'
 
     steps:
       - name: Checkout
@@ -206,14 +206,14 @@ jobs:
         runtime:
           - php: '8.2'
             laravel: '12'
-            framework: '^12.0'
-            testbench: '^10.0'
-            pest: '^3.0'
+            framework: '~12.0'
+            testbench: '~10.0'
+            pest: '~3.0'
           - php: '8.3'
             laravel: '13'
-            framework: '^13.0'
-            testbench: '^11.0'
-            pest: '^4.0'
+            framework: '~13.0'
+            testbench: '~11.0'
+            pest: '~4.0'
 
     steps:
       - name: Checkout
@@ -258,14 +258,14 @@ jobs:
         runtime:
           - php: '8.2'
             laravel: '12'
-            framework: '^12.0'
-            testbench: '^10.0'
-            pest: '^3.0'
+            framework: '~12.0'
+            testbench: '~10.0'
+            pest: '~3.0'
           - php: '8.3'
             laravel: '13'
-            framework: '^13.0'
-            testbench: '^11.0'
-            pest: '^4.0'
+            framework: '~13.0'
+            testbench: '~11.0'
+            pest: '~4.0'
 
     steps:
       - name: Checkout
@@ -341,7 +341,7 @@ jobs:
             portability-${{ matrix.platform.runner }}-
 
       - name: Pin Laravel 13 development dependencies
-        run: composer require --dev 'laravel/framework:^13.0' 'orchestra/testbench:^11.0' 'pestphp/pest:^4.0' --no-update --no-interaction
+        run: composer require --dev 'laravel/framework:~13.0' 'orchestra/testbench:~11.0' 'pestphp/pest:~4.0' --no-update --no-interaction
 
       - name: Install dependencies
         run: composer update --prefer-stable --prefer-dist --with-all-dependencies --no-interaction --no-progress
@@ -382,7 +382,7 @@ jobs:
           extensions: fileinfo, tokenizer
 
       - name: Pin Laravel 13 development dependencies
-        run: composer require --dev 'laravel/framework:^13.0' 'orchestra/testbench:^11.0' 'pestphp/pest:^4.0' --no-update --no-interaction
+        run: composer require --dev 'laravel/framework:~13.0' 'orchestra/testbench:~11.0' 'pestphp/pest:~4.0' --no-update --no-interaction
 
       - name: Install dependencies
         run: composer update --prefer-stable --prefer-dist --with-all-dependencies --no-interaction --no-progress
