@@ -31,14 +31,35 @@ jobs:
           composer update --prefer-dist --no-interaction --no-progress
 
       - name: Apply reviewed changes
-        run: python .github/source-scan-hardening.py
+        run: |
+          python .github/source-scan-hardening.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/Unit/TextEnvironmentScannerTest.php')
+          lines = path.read_text().splitlines()
+          matches = [i for i, line in enumerate(lines) if 'file_put_contents($compose, "# COMMENTED_INFRA:' in line]
+          if len(matches) != 1:
+              raise SystemExit(f'Expected one compose fixture line, found {len(matches)}')
+
+          index = matches[0]
+          replacement = [
+              "    file_put_contents($compose, <<<'YAML'",
+              '# COMMENTED_INFRA: ${COMMENTED_INFRA}',
+              'services:',
+              '  app:',
+              '    environment:',
+              '      REAL_INFRA: ${REAL_INFRA}',
+              '      LABEL: "#${QUOTED_INFRA}"',
+              'YAML);',
+          ]
+          lines[index:index + 1] = replacement
+          path.write_text('\n'.join(lines) + '\n')
+          PY
 
       - name: Syntax check generated PHP
         run: |
-          if ! php -l tests/Unit/TextEnvironmentScannerTest.php; then
-            nl -ba tests/Unit/TextEnvironmentScannerTest.php
-            exit 1
-          fi
+          php -l tests/Unit/TextEnvironmentScannerTest.php
           php -l src/EnvGuard.php
           php -l src/Scanners/PhpEnvironmentScanner.php
           php -l src/Scanners/TextEnvironmentScanner.php
