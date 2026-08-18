@@ -49,6 +49,28 @@ it('tests the exact Composer distribution archive in a fresh Laravel application
     assertWorkflowActionsArePinned($workflow);
 });
 
+it('publishes immutable stable tags and verifies Packagist synchronization', function (): void {
+    $workflow = (string) file_get_contents(__DIR__.'/../../.github/workflows/release.yml');
+
+    foreach ([
+        'contents: write',
+        'fetch-depth: 0',
+        'git tag -a "$TAG" "$GITHUB_SHA"',
+        'git push origin "$TAG"',
+        'gh release create "$TAG"',
+        'https://repo.packagist.org/p2/${PACKAGE}.json',
+        '.source.reference == $sha',
+    ] as $requirement) {
+        expect($workflow)->toContain($requirement);
+    }
+
+    expect($workflow)
+        ->toContain('Existing tag %s points to %s instead of release commit %s.')
+        ->toContain('Packagist did not expose %s for commit %s after repeated public metadata checks.');
+
+    assertWorkflowActionsArePinned($workflow);
+});
+
 it('keeps temporary source-mutation workflows out of the maintained branch', function (): void {
     $root = dirname(__DIR__, 2);
 
