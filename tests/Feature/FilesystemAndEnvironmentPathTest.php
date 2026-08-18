@@ -85,7 +85,7 @@ it('uses Laravels configured environment path and active environment filename', 
         $result = $scenario['guard']->inspect();
         $codes = array_column($result['findings'], 'code');
 
-        expect($scenario['app']->environmentFilePath())->toBe($environmentPath.'/.env.local')
+        expect($scenario['app']->environmentFilePath())->toBe($environmentPath.DIRECTORY_SEPARATOR.'.env.local')
             ->and($codes)->not->toContain('active-environment-file-missing', 'missing-reference-file', 'missing-from-active');
     } finally {
         removeFilesystemScenarioRoot($root);
