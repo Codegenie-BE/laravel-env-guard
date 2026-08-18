@@ -1,8 +1,9 @@
-name: tests
+name: Tests
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
   schedule:
@@ -15,36 +16,70 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  COMPOSER_MAX_PARALLEL_HTTP: 4
+
 jobs:
-  compatibility:
-    name: Laravel ${{ matrix.laravel }} / PHP ${{ matrix.php }}
+  plan:
+    name: CI plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    outputs:
+      full: ${{ steps.changes.outputs.full }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Determine required coverage
+        id: changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          full=true
+
+          if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "push" ]; then
+            base="$BASE_SHA"
+            head="$(git rev-parse HEAD)"
+
+            if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+              full=false
+
+              while IFS= read -r file; do
+                [ -z "$file" ] && continue
+
+                case "$file" in
+                  README.md|CHANGELOG.md|CODE_OF_CONDUCT.md|CONTRIBUTING.md|LICENSE.md|SECURITY.md|SUPPORT.md|docs/*|.github/ISSUE_TEMPLATE/*|.github/pull_request_template.md)
+                    ;;
+                  *)
+                    full=true
+                    ;;
+                esac
+              done < <(git diff --name-only "$base" "$head")
+            fi
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "schedule" ]; then
+            full=true
+          fi
+
+          echo "full=$full" >> "$GITHUB_OUTPUT"
+          echo "full=$full"
+
+  quality:
+    name: Quality / Linux x64 / PHP 8.5 / Laravel 13
+    needs: plan
+    if: needs.plan.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - php: '8.2'
-            laravel: '^12.0'
-            testbench: '^10.0'
-          - php: '8.3'
-            laravel: '^12.0'
-            testbench: '^10.0'
-          - php: '8.4'
-            laravel: '^12.0'
-            testbench: '^10.0'
-          - php: '8.5'
-            laravel: '^12.0'
-            testbench: '^10.0'
-          - php: '8.3'
-            laravel: '^13.0'
-            testbench: '^11.0'
-          - php: '8.4'
-            laravel: '^13.0'
-            testbench: '^11.0'
-          - php: '8.5'
-            laravel: '^13.0'
-            testbench: '^11.0'
+
+    env:
+      COMPOSER_CACHE_DIR: ${{ github.workspace }}/../.composer-cache
 
     steps:
       - name: Checkout
@@ -53,24 +88,284 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
-          php-version: ${{ matrix.php }}
+          php-version: '8.5'
           coverage: none
           tools: composer:v2
+          extensions: fileinfo, tokenizer
 
-      - name: Pin framework matrix
-        run: composer require --dev "laravel/framework:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-update --no-interaction
+      - name: Cache Composer downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.COMPOSER_CACHE_DIR }}
+          key: quality-composer-php-8.5-laravel-13-${{ hashFiles('composer.json') }}
+          restore-keys: |
+            quality-composer-php-8.5-laravel-13-
+            quality-composer-
+
+      - name: Pin Laravel 13 development dependencies
+        run: composer require --dev 'laravel/framework:^13.0' 'orchestra/testbench:^11.0' 'pestphp/pest:^4.0' --no-update --no-interaction
 
       - name: Install dependencies
-        run: composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+        run: composer update --prefer-stable --prefer-dist --with-all-dependencies --no-interaction --no-progress
 
-      - name: Validate package
-        run: composer validate --strict
+      - name: Run fast quality gate
+        run: composer check
 
-      - name: Run tests
+  compatibility:
+    name: Compatibility / Linux x64 / PHP ${{ matrix.runtime.php }} / Laravel ${{ matrix.runtime.laravel }}
+    needs: plan
+    if: needs.plan.outputs.full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      COMPOSER_CACHE_DIR: ${{ github.workspace }}/../.composer-cache
+
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        runtime:
+          - php: '8.2'
+            laravel: '12'
+            framework: '^12.0'
+            testbench: '^10.0'
+            pest: '^3.0'
+          - php: '8.3'
+            laravel: '12'
+            framework: '^12.0'
+            testbench: '^10.0'
+            pest: '^3.0'
+          - php: '8.4'
+            laravel: '12'
+            framework: '^12.0'
+            testbench: '^10.0'
+            pest: '^3.0'
+          - php: '8.5'
+            laravel: '12'
+            framework: '^12.0'
+            testbench: '^10.0'
+            pest: '^3.0'
+          - php: '8.3'
+            laravel: '13'
+            framework: '^13.0'
+            testbench: '^11.0'
+            pest: '^4.0'
+          - php: '8.4'
+            laravel: '13'
+            framework: '^13.0'
+            testbench: '^11.0'
+            pest: '^4.0'
+          - php: '8.5'
+            laravel: '13'
+            framework: '^13.0'
+            testbench: '^11.0'
+            pest: '^4.0'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: ${{ matrix.runtime.php }}
+          coverage: none
+          tools: composer:v2
+          extensions: fileinfo, tokenizer
+
+      - name: Cache Composer downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.COMPOSER_CACHE_DIR }}
+          key: compatibility-composer-php-${{ matrix.runtime.php }}-laravel-${{ matrix.runtime.laravel }}-${{ hashFiles('composer.json') }}
+          restore-keys: |
+            compatibility-composer-php-${{ matrix.runtime.php }}-laravel-${{ matrix.runtime.laravel }}-
+            compatibility-composer-php-${{ matrix.runtime.php }}-
+
+      - name: Pin framework matrix
+        run: composer require --dev 'laravel/framework:${{ matrix.runtime.framework }}' 'orchestra/testbench:${{ matrix.runtime.testbench }}' 'pestphp/pest:${{ matrix.runtime.pest }}' --no-update --no-interaction
+
+      - name: Install dependencies
+        run: composer update --prefer-stable --prefer-dist --with-all-dependencies --no-interaction --no-progress
+
+      - name: Run package tests
         run: composer test
 
-  quality:
-    name: Quality gates / PHP 8.5 / Laravel 13
+  minimum-dependencies:
+    name: Minimum dependencies / PHP ${{ matrix.runtime.php }} / Laravel ${{ matrix.runtime.laravel }}
+    needs: plan
+    if: needs.plan.outputs.full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        runtime:
+          - php: '8.2'
+            laravel: '12'
+            framework: '^12.0'
+            testbench: '^10.0'
+            pest: '^3.0'
+          - php: '8.3'
+            laravel: '13'
+            framework: '^13.0'
+            testbench: '^11.0'
+            pest: '^4.0'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: ${{ matrix.runtime.php }}
+          coverage: none
+          tools: composer:v2
+          extensions: fileinfo, tokenizer
+
+      - name: Pin minimum framework matrix
+        run: composer require --dev 'laravel/framework:${{ matrix.runtime.framework }}' 'orchestra/testbench:${{ matrix.runtime.testbench }}' 'pestphp/pest:${{ matrix.runtime.pest }}' --no-update --no-interaction
+
+      - name: Install minimum supported dependencies
+        run: composer update --prefer-lowest --prefer-stable --prefer-dist --with-all-dependencies --no-interaction --no-progress
+
+      - name: Validate minimum dependency runtime
+        run: |
+          composer check:composer
+          composer check:security
+          composer check:autoload
+          composer test
+
+  end-to-end:
+    name: E2E / Linux x64 / PHP ${{ matrix.runtime.php }} / Laravel ${{ matrix.runtime.laravel }}
+    needs: plan
+    if: needs.plan.outputs.full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      COMPOSER_CACHE_DIR: ${{ github.workspace }}/../.composer-cache
+      COMPOSER_PROCESS_TIMEOUT: 0
+
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        runtime:
+          - php: '8.2'
+            laravel: '12'
+            framework: '^12.0'
+            testbench: '^10.0'
+            pest: '^3.0'
+          - php: '8.3'
+            laravel: '13'
+            framework: '^13.0'
+            testbench: '^11.0'
+            pest: '^4.0'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: ${{ matrix.runtime.php }}
+          coverage: none
+          tools: composer:v2
+          extensions: fileinfo, tokenizer
+
+      - name: Cache Composer downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.COMPOSER_CACHE_DIR }}
+          key: e2e-composer-php-${{ matrix.runtime.php }}-laravel-${{ matrix.runtime.laravel }}-${{ hashFiles('composer.json') }}
+          restore-keys: |
+            e2e-composer-php-${{ matrix.runtime.php }}-laravel-${{ matrix.runtime.laravel }}-
+            e2e-composer-
+
+      - name: Pin package development dependencies
+        run: composer require --dev 'laravel/framework:${{ matrix.runtime.framework }}' 'orchestra/testbench:${{ matrix.runtime.testbench }}' 'pestphp/pest:${{ matrix.runtime.pest }}' --no-update --no-interaction
+
+      - name: Install package development dependencies
+        run: composer update --prefer-stable --prefer-dist --with-all-dependencies --no-interaction --no-progress
+
+      - name: Run fresh Laravel application scenarios
+        run: composer test:e2e -- --laravel=${{ matrix.runtime.laravel }}
+
+  portability:
+    name: Portability / ${{ matrix.platform.name }} / PHP 8.5 / Laravel 13
+    needs: plan
+    if: needs.plan.outputs.full == 'true'
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 25
+
+    env:
+      COMPOSER_CACHE_DIR: ${{ github.workspace }}/../.composer-cache
+
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        platform:
+          - name: Windows x64
+            runner: windows-latest
+          - name: macOS ARM64
+            runner: macos-latest
+          - name: Linux ARM64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+          extensions: fileinfo, tokenizer
+
+      - name: Cache Composer downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.COMPOSER_CACHE_DIR }}
+          key: portability-${{ matrix.platform.runner }}-php-8.5-laravel-13-${{ hashFiles('composer.json') }}
+          restore-keys: |
+            portability-${{ matrix.platform.runner }}-php-8.5-laravel-13-
+            portability-${{ matrix.platform.runner }}-
+
+      - name: Pin Laravel 13 development dependencies
+        run: composer require --dev 'laravel/framework:^13.0' 'orchestra/testbench:^11.0' 'pestphp/pest:^4.0' --no-update --no-interaction
+
+      - name: Install dependencies
+        run: composer update --prefer-stable --prefer-dist --with-all-dependencies --no-interaction --no-progress
+
+      - name: Run package tests
+        run: composer test
+
+  dependency-review:
+    name: Dependency review
+    needs: plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+
+  coverage:
+    name: Coverage / PHP 8.5 / Laravel 13
+    needs: plan
+    if: needs.plan.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -84,65 +379,29 @@ jobs:
           php-version: '8.5'
           coverage: pcov
           tools: composer:v2
+          extensions: fileinfo, tokenizer
 
-      - name: Install Laravel 13 development dependencies
-        run: |
-          composer require --dev "laravel/framework:^13.0" "orchestra/testbench:^11.0" --no-update --no-interaction
-          composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+      - name: Pin Laravel 13 development dependencies
+        run: composer require --dev 'laravel/framework:^13.0' 'orchestra/testbench:^11.0' 'pestphp/pest:^4.0' --no-update --no-interaction
 
-      - name: Validate package
-        run: composer validate --strict
+      - name: Install dependencies
+        run: composer update --prefer-stable --prefer-dist --with-all-dependencies --no-interaction --no-progress
 
-      - name: Audit dependencies
-        run: composer audit --no-interaction
-
-      - name: Check formatting
-        run: composer format:test
-
-      - name: Static analysis
-        run: composer analyse
-
-      - name: Coverage
+      - name: Enforce coverage baseline
         run: composer test:coverage
-
-  portability:
-    name: Portability / ${{ matrix.os }} / PHP 8.5 / Laravel 13
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - windows-latest
-          - macos-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
-        with:
-          php-version: '8.5'
-          coverage: none
-          tools: composer:v2
-          extensions: fileinfo
-
-      - name: Install Laravel 13 development dependencies
-        run: |
-          composer require --dev "laravel/framework:~13.0" "orchestra/testbench:~11.0" --no-update --no-interaction
-          composer update --prefer-stable --prefer-dist --no-interaction --no-progress
-
-      - name: Run tests
-        run: composer test
 
   ci-gate:
     name: CI gate
     if: always()
     needs:
-      - compatibility
+      - plan
       - quality
+      - compatibility
+      - minimum-dependencies
+      - end-to-end
       - portability
+      - dependency-review
+      - coverage
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
