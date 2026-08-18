@@ -60,7 +60,10 @@
             "@check:security",
             "@check:autoload",
             "@format:test",
-            "@analyse",
+            "@analyse"
+        ],
+        "check:all": [
+            "@check",
             "@test"
         ],
         "check:autoload": "@composer dump-autoload --optimize --strict-psr --no-interaction",
@@ -85,7 +88,8 @@
     },
     "scripts-descriptions": {
         "analyse": "Run Larastan static analysis.",
-        "check": "Run Composer, security, autoload, formatting, static-analysis and Pest quality gates.",
+        "check": "Run the fast Composer, security, autoload, formatting and static-analysis quality gate.",
+        "check:all": "Run the fast quality gate and the complete Pest suite.",
         "check:autoload": "Build an optimized autoloader and reject invalid PSR mappings.",
         "check:composer": "Validate composer.json strictly.",
         "check:security": "Audit installed dependencies for known security advisories.",
