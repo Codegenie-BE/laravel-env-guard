@@ -63,6 +63,25 @@ jobs:
       - name: Apply reviewed hardening
         run: python .github/hardening.py
 
+      - name: Bind config in core test application
+        shell: python
+        run: |
+          from pathlib import Path
+
+          file = Path('tests/Feature/EnvGuardTest.php')
+          text = file.read_text()
+          text = text.replace(
+              'use Illuminate\\Foundation\\Application;\n',
+              'use Illuminate\\Config\\Repository;\nuse Illuminate\\Foundation\\Application;\n',
+              1,
+          )
+          text = text.replace(
+              '    $app = new Application($root);\n',
+              "    $app = new Application($root);\n    $app->instance('config', new Repository);\n",
+              1,
+          )
+          file.write_text(text)
+
       - name: Format
         run: composer format
 
