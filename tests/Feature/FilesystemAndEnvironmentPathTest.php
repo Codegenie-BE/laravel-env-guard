@@ -35,7 +35,6 @@ function filesystemScenarioGuard(
         'known_external_keys' => [],
         'ignore_keys' => [],
         'ignore_patterns' => [],
-        'cache_path' => $root.'/storage/env-guard.json',
     ];
 
     foreach ([...$defaults, ...$overrides] as $key => $value) {
