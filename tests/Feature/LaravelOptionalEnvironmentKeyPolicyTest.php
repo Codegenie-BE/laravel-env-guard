@@ -4,12 +4,12 @@ use Codegenie\EnvGuard\Scanners\EnvironmentFileScanner;
 use Codegenie\EnvGuard\Support\LaravelOptionalEnvironmentKeyPolicy;
 use Illuminate\Foundation\Application;
 
-it('suppresses only absent Laravel optional keys and keeps declared optional keys auditable', function () {
+it('suppresses only absent Laravel optional keys and keeps active optional keys auditable', function () {
     $root = sys_get_temp_dir().'/env-guard-optional-policy-'.bin2hex(random_bytes(5));
     mkdir($root, 0777, true);
 
     file_put_contents($root.'/.env', "MAIL_URL=smtp://localhost\n# REDIS_URL=redis://commented\n");
-    file_put_contents($root.'/.env.example', "APP_NAME=Laravel\n");
+    file_put_contents($root.'/.env.example', "APP_NAME=Laravel\n# DB_HOST=127.0.0.1\n");
 
     $app = new Application($root);
     $app->useEnvironmentPath($root);
@@ -27,7 +27,7 @@ it('suppresses only absent Laravel optional keys and keeps declared optional key
         ))->inactiveKeys();
 
         expect($inactive)
-            ->toContain('REDIS_URL', 'DB_QUEUE_CONNECTION', 'SESSION_CONNECTION')
+            ->toContain('REDIS_URL', 'DB_HOST', 'DB_QUEUE_CONNECTION', 'SESSION_CONNECTION')
             ->not->toContain('MAIL_URL');
     } finally {
         @unlink($root.'/.env');
