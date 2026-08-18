@@ -46,3 +46,6 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Filesystem regression coverage now verifies custom Laravel environment paths and filenames, configured maximum source size, and that symlinked source files are not followed.
 - The exact Composer release archive is now validated for required runtime files, excluded development-only files, strict manifest validity, and installation into a fresh Laravel 13 application.
 - Repository presentation now surfaces the existing Distribution workflow, a concise package tagline and the full scenario model near the top of the README.
+- Guarded Artisan commands now render current warning/error findings to STDERR while retaining change-based Laravel logging and key-only secret-safe diagnostics.
+- Laravel 12/13 optional framework keys now avoid `used-but-undeclared` noise while inactive and automatically re-enter normal auditing when declared or supplied at runtime.
+- Fresh Laravel 12/13 E2E coverage now verifies optional-key suppression, activation, console visibility, Laravel logging, framework-owned keys, and value non-disclosure.

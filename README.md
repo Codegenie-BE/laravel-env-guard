@@ -38,17 +38,17 @@ Laravel Env Guard combines key-only environment-file inspection with lightweight
 | raw `getenv()` / `$_ENV` / `$_SERVER` access for a project key | Error |
 | duplicate active key in an environment file | Error |
 | key differs only by case | Error |
-| project uses a key not declared in any scanned env file | Warning |
+| project uses a non-optional key not declared in any scanned env file | Warning |
 | active `.env` key is missing from the configured reference files | Warning |
 | used key exists only outside the configured reference files | Warning |
 | active reference key is missing from the active env file | Warning |
-| used key is missing from `.env.testing` or another env file | Warning |
+| used key is missing from `.env.testing` or another standalone comparison file | Warning |
 | declared key appears unused | Warning |
 | dynamic `env()` inside `config/` | Warning |
 | config is cached while the guard is active | Warning |
 | reference or active env file is missing | Warning |
 
-Errors fail fast in guarded development environments by default. Warnings are logged when the scan result changes.
+Errors fail fast in guarded development environments by default. Findings are logged when the scan result changes. During Artisan commands, current warnings and errors are also written to STDERR by default, even when the metadata scan result was reused from cache.
 
 ## Why `env()` outside `config/` matters
 
@@ -119,6 +119,7 @@ The package understands the environment mechanisms used by current Laravel appli
 - optional discovery of additional `.env.*` files for diagnostics without assuming they are complete standalone environments;
 - environment variables supplied by `phpunit.xml` through `<env>` or `<server>`;
 - external/server variables that already satisfy a key;
+- Laravel 12/13 stock optional connection, driver, service, logging, session and authentication keys;
 - Dotenv `${KEY}` interpolation;
 - Vite `import.meta.env.VITE_*`;
 - Vite `loadEnv()` access;
@@ -162,6 +163,71 @@ php artisan vendor:publish --tag=env-guard-config
 ```
 
 Publishing is optional; the guard itself never requires an Artisan command.
+
+## Artisan console output
+
+When a guarded application boots through Artisan and findings exist, Env Guard writes a compact key-only report to STDERR:
+
+```text
+Laravel Env Guard: 2 warning(s), 0 error(s)
+WARNING [missing-from-example] CUSTOM_KEY: Environment key CUSTOM_KEY exists in the active environment file but is not documented in .env.example.
+  .env:42
+WARNING [possibly-unused-key] CUSTOM_KEY: Environment key CUSTOM_KEY is declared but no application-owned usage was found.
+  .env:42
+```
+
+Console output is intentionally independent from change-based logging. A cached finding therefore remains visible when you run another Artisan command, while Laravel's log file is not filled with the same warning on every boot.
+
+Disable console reporting without disabling the guard:
+
+```php
+'console_output' => false,
+```
+
+No environment value is included in console output.
+
+## Optional Laravel framework keys
+
+Laravel 12 and 13 ship config definitions for many settings that a given application may never use. Examples include:
+
+- alternative database URL/socket/SSL settings;
+- Redis connection and retry settings;
+- database cache and queue connection details;
+- SQS, Beanstalkd, DynamoDB and S3 settings;
+- SMTP transport details and optional mailer services;
+- Postmark, Resend, AWS and Slack credentials;
+- optional session storage/cookie overrides;
+- optional logging channels and Papertrail/Slack settings;
+- optional authentication overrides.
+
+The existence of `env('REDIS_URL')` or `env('MAIL_URL')` in a stock Laravel config file does **not** by itself mean every project must document that key.
+
+By default, Env Guard therefore suppresses `used-but-undeclared` noise for a maintained exact list of Laravel 12/13 optional framework keys **only while the key is genuinely inactive**.
+
+The key becomes fully auditable again as soon as it is:
+
+- actively declared in `.env`;
+- declared in a configured reference or comparison file;
+- declared in a discovered environment file;
+- supplied through the real runtime environment.
+
+For example, an application that never configures `LOG_DAILY_DAYS` gets no warning merely because Laravel's `config/logging.php` knows about it. If the project adds this to `.env`:
+
+```dotenv
+LOG_DAILY_DAYS=30
+```
+
+but omits it from `.env.example`, Env Guard reports `missing-from-example` normally.
+
+Core project selectors such as `DB_CONNECTION`, `CACHE_STORE`, `QUEUE_CONNECTION`, `SESSION_DRIVER`, `MAIL_MAILER`, `LOG_CHANNEL`, and `FILESYSTEM_DISK` are deliberately not part of this optional-key suppression.
+
+Strict projects can restore the previous literal behavior:
+
+```php
+'suppress_inactive_laravel_keys' => false,
+```
+
+The optional-key policy uses exact names rather than broad prefixes, so custom project keys are not silently hidden.
 
 ## Vite
 
@@ -215,7 +281,7 @@ Current Laravel skeletons document optional variables by commenting out assignme
 # DB_PORT=3306
 ```
 
-Laravel Env Guard counts those keys as documented but does not require them in `.env`.
+Laravel Env Guard counts those keys as documented but does not require them in `.env`. A commented assignment in the active `.env`, however, is not treated as an active value.
 
 ## Dynamic keys
 
@@ -238,13 +304,17 @@ The guard reports the location instead of guessing. A dynamic lookup outside `co
 Unused detection is intentionally phrased as **possibly unused**. A key can be consumed outside application-owned Laravel source, for example by:
 
 - a package in `vendor/`;
+- Laravel/framework tooling;
 - Docker or Sail;
 - a deployment script;
 - a hosting platform;
 - a process manager;
-- code that dynamically constructs the key.
+- code that dynamically constructs the key;
+- a runtime outside Laravel.
 
-Suppress intentional cases explicitly:
+Laravel-owned `BCRYPT_ROUNDS`, `BROADCAST_CONNECTION`, `PHP_CLI_SERVER_WORKERS` and `LARAVEL_ENV_ENCRYPTION_KEY`, plus the default skeleton `VITE_APP_NAME`, are excluded from unused diagnostics by default.
+
+Suppress additional intentional cases explicitly:
 
 ```php
 'ignore_keys' => [
@@ -269,7 +339,9 @@ A fingerprint is built from scanned-file metadata, behavior-affecting guard conf
 storage/framework/cache/laravel-env-guard.json
 ```
 
-When that fingerprint is unchanged, source files are not reparsed. This also prevents stale cache reuse when an externally supplied environment key appears or disappears between application boots. The cache contains key names, finding metadata, paths, and line numbers only. It never contains environment values.
+When that fingerprint is unchanged, source files are not reparsed. The optional Laravel-key policy is folded into the existing ignore-key fingerprint, so activating or deactivating a framework optional key cannot reuse an incompatible cached result.
+
+The cache contains key names, finding metadata, paths, and line numbers only. It never contains environment values.
 
 Change the maximum scanned file size if necessary:
 
@@ -283,7 +355,9 @@ The active env file is not hard-coded to `base_path('.env')`. Laravel Env Guard 
 
 ## Long-running processes
 
-Laravel Env Guard runs when Laravel boots. Under Octane, a queue worker, Reverb, or another long-running process, that means the audit runs when that process starts. Reload/restart the process after changing source or environment files, just as you would for other boot-time configuration changes.
+Laravel Env Guard runs when the Laravel application boots. Under Octane, a queue worker, Reverb, or another long-running process, that means the audit runs when that process starts. Reload/restart the process after changing source or environment files, just as you would for other boot-time configuration changes.
+
+Console output applies only when Laravel is running in console mode.
 
 ## Encrypted environment files
 
@@ -300,6 +374,8 @@ return [
     'enabled' => true,
     'environments' => ['local'],
     'fail_on_error' => true,
+    'console_output' => true,
+    'suppress_inactive_laravel_keys' => true,
 
     'reference_files' => ['.env.example'],
     'compare_files' => ['.env.testing'],
@@ -343,6 +419,8 @@ return [
     'max_file_size' => 1_048_576,
 
     'known_external_keys' => [
+        'BCRYPT_ROUNDS',
+        'BROADCAST_CONNECTION',
         'LARAVEL_ENV_ENCRYPTION_KEY',
         'PHP_CLI_SERVER_WORKERS',
         'VITE_APP_NAME',
@@ -361,7 +439,7 @@ return [
 | 12.x | 8.2 - 8.5 |
 | 13.x | 8.3 - 8.5 |
 
-CI tests every valid Laravel/PHP combination in that matrix and runs an additional portability check on Windows and macOS.
+CI tests every valid Laravel/PHP combination in that matrix and runs additional minimum-dependency, E2E and cross-platform portability checks.
 
 ## Security model
 
@@ -371,6 +449,7 @@ Laravel Env Guard follows several hard rules:
 - no network requests;
 - no automatic `.env` modifications;
 - no secret synchronization;
+- no environment values in console output;
 - no environment values in logs;
 - no environment values in exceptions;
 - no environment values in the metadata cache;
@@ -395,6 +474,8 @@ composer analyse
 composer audit
 composer test:coverage
 ```
+
+The E2E suite installs the exact package into fresh Laravel 12 and 13 applications and verifies package discovery, optional framework-key behavior, console/log diagnostics, secret non-disclosure, blocking unsafe `env()` usage and configuration-cache transitions.
 
 ## Support and contributing
 
