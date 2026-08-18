@@ -45,14 +45,14 @@ jobs:
 
           code_lines = []
           for line in lines[run_index + 1:]:
-              if line.startswith('      - name:'):
+              if line == '      - name: Format':
                   break
               if line.startswith('          '):
                   code_lines.append(line[10:])
-              elif line == '':
-                  code_lines.append('')
               else:
-                  raise SystemExit(f'Unexpected workflow indentation: {line!r}')
+                  # Less-indented lines occur only inside Python triple-quoted
+                  # replacement strings. Preserve their intended literal text.
+                  code_lines.append(line)
 
           code = '\n'.join(code_lines) + '\n'
           exec(compile(code, '<reviewed-hardening>', 'exec'))
