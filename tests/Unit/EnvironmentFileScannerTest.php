@@ -105,3 +105,14 @@ ENV);
 
     @unlink($path);
 });
+
+it('supports UTF-8 byte order marks on the first environment key', function () {
+    $path = tempnam(sys_get_temp_dir(), 'env-guard-');
+    file_put_contents($path, "\xEF\xBB\xBFFIRST_KEY=value\nSECOND_KEY=value\n");
+
+    $result = (new EnvironmentFileScanner)->scan($path);
+
+    expect(array_keys($result['keys']))->toBe(['FIRST_KEY', 'SECOND_KEY']);
+
+    @unlink($path);
+});
