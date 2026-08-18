@@ -1,7 +1,10 @@
 # Laravel Env Guard
 
 [![Tests](https://github.com/Codegenie-BE/laravel-env-guard/actions/workflows/tests.yml/badge.svg)](https://github.com/Codegenie-BE/laravel-env-guard/actions/workflows/tests.yml)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/codegenie-be/laravel-env-guard.svg)](https://packagist.org/packages/codegenie-be/laravel-env-guard)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
+[![PHP](https://img.shields.io/badge/php-%5E8.2-777BB4.svg)](https://www.php.net/supported-versions.php)
+[![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-FF2D20.svg)](https://laravel.com/docs/releases)
 
 **by [Codegenie](https://www.codegenie.be)**
 
@@ -14,6 +17,10 @@ composer require --dev codegenie-be/laravel-env-guard
 That is enough. Laravel package discovery registers the guard automatically.
 
 By default it runs only when the application environment is `local`.
+
+- [Packagist](https://packagist.org/packages/codegenie-be/laravel-env-guard)
+- [Ask a question](https://github.com/Codegenie-BE/laravel-env-guard/discussions)
+- [Report a bug or detection issue](https://github.com/Codegenie-BE/laravel-env-guard/issues/new/choose)
 
 ## What it checks
 
@@ -345,12 +352,12 @@ return [
 
 ## Compatibility
 
-| Laravel | Supported PHP versions | Laravel status on 2026-08-18 |
-| --- | --- | --- |
-| 12.x | 8.2 - 8.5 | Security fixes until 2027-02-24 |
-| 13.x | 8.3 - 8.5 | Bug fixes through Q3 2027; security fixes until 2028-03-17 |
+| Laravel | Supported PHP versions |
+| --- | --- |
+| 12.x | 8.2 - 8.5 |
+| 13.x | 8.3 - 8.5 |
 
-CI tests every valid Laravel/PHP combination in that matrix.
+CI tests every valid Laravel/PHP combination in that matrix and runs an additional portability check on Windows and macOS.
 
 ## Security model
 
@@ -382,7 +389,14 @@ composer test
 composer format:test
 composer analyse
 composer audit
+composer test:coverage
 ```
+
+## Support and contributing
+
+Use [GitHub Discussions](https://github.com/Codegenie-BE/laravel-env-guard/discussions) for usage questions and open-ended environment edge cases. Use the structured [issue forms](https://github.com/Codegenie-BE/laravel-env-guard/issues/new/choose) for reproducible bugs, false positives, false negatives and focused feature requests.
+
+Never post real environment values or other secrets. See [SUPPORT.md](SUPPORT.md), [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
 ## Design boundary
 
