@@ -54,3 +54,20 @@ JS);
 
     @unlink($path);
 });
+
+it('detects lowercase Vite keys and direct loadEnv destructuring', function () {
+    $path = tempnam(sys_get_temp_dir(), 'vite-');
+    file_put_contents($path, <<<'JS'
+import { loadEnv } from 'vite';
+console.log(import.meta.env.VITE_lowercase);
+console.log(import.meta.env['VITE_name.with.dot']);
+const { VITE_direct, APP_port: port } = loadEnv(mode, process.cwd(), '');
+JS);
+
+    $result = (new TextEnvironmentScanner)->scan([$path], ['APP_port']);
+    $keys = array_column($result['usages'], 'key');
+
+    expect($keys)->toContain('VITE_lowercase', 'VITE_name.with.dot', 'VITE_direct', 'APP_port');
+
+    @unlink($path);
+});

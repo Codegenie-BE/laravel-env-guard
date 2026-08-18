@@ -32,7 +32,7 @@ return [
         '.env.testing',
     ],
 
-    'discover_environment_files' => true,
+    'discover_environment_files' => false,
 
     /*
     | Application-owned source paths. Vendor and node_modules are deliberately
@@ -56,7 +56,11 @@ return [
         'phpunit.xml.dist',
         'public/index.php',
         'vite.config.js',
+        'vite.config.mjs',
+        'vite.config.cjs',
         'vite.config.ts',
+        'vite.config.mts',
+        'vite.config.cts',
         'compose.yaml',
         'compose.yml',
         'docker-compose.yaml',

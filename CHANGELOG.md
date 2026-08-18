@@ -22,3 +22,9 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Precise Vite `loadEnv()` tracking that follows the assigned environment object instead of matching unrelated `VITE_*` object properties.
 - Multiline dotenv parsing that ignores assignment-shaped content inside quoted values and still tracks valid `${KEY}` interpolation without retaining values.
 - Additional project-file coverage for `public/index.php` and `phpunit.xml.dist`, plus shell-style infrastructure defaults such as `${APP_NAME:-Laravel}`.
+
+- Dotenv key parsing aligned with current `vlucas/phpdotenv`, including quoted names, Unicode and numeric-leading names while rejecting invalid hyphenated names.
+- Conservative standalone-env comparison semantics so auto-discovered Vite layer files do not produce missing-key completeness noise.
+- Lowercase/custom Vite key detection, direct `loadEnv()` destructuring, and common `.mjs` / `.cjs` / `.mts` / `.cts` Vite config variants.
+- Core Env Guard regression coverage for ignored keys, explicit comparisons, discovery behavior, caching, and secret-value non-persistence.
+- Deduplicated source roots before recursive scanning so the default `config` directory is not traversed twice.

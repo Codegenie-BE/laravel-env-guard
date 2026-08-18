@@ -38,7 +38,7 @@ final class EnvironmentFileScanner
         $duplicateLines = [];
         $multilineQuote = null;
         $multilineCommented = false;
-        $name = '[\\p{L}_][\\p{L}\\p{N}_.-]*';
+        $name = '[\\p{Ll}\\p{Lu}\\p{M}\\p{N}_.]+';
 
         while (($line = fgets($handle)) !== false) {
             $lineNumber++;
@@ -85,12 +85,19 @@ final class EnvironmentFileScanner
                 $commented = true;
             }
 
-            if (! preg_match('/^(?:export\\s+)?('.$name.')\\s*=(.*)$/u', $candidate, $matches)) {
+            $pattern = '/^(?:export\\s+)?(?:(["\\x27])('.$name.')\\1|('.$name.'))\\s*=(.*)$/u';
+
+            if (! preg_match($pattern, $candidate, $matches, PREG_UNMATCHED_AS_NULL)) {
                 continue;
             }
 
-            $key = $matches[1];
-            $value = ltrim($matches[2]);
+            $key = $matches[2] ?? $matches[3] ?? null;
+
+            if ($key === null) {
+                continue;
+            }
+
+            $value = ltrim($matches[4]);
 
             if (! $commented) {
                 if (isset($seen[$key])) {

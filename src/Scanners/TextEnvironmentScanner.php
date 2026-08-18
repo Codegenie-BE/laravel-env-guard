@@ -45,10 +45,10 @@ final class TextEnvironmentScanner
             $viteFilter = static fn (string $key): bool => str_starts_with($key, 'VITE_') || isset($declaredLookup[$key]);
             $declaredFilter = static fn (string $key): bool => isset($declaredLookup[$key]);
 
-            $this->collectPattern($result['usages'], $contents, $file, '/\bimport\.meta\.env\.([A-Z][A-Z0-9_]*)/', 'vite', $viteFilter);
-            $this->collectPattern($result['usages'], $contents, $file, '/\bimport\.meta\.env\s*\[\s*[\'\"]([A-Z][A-Z0-9_]*)[\'\"]\s*\]/', 'vite', $viteFilter);
-            $this->collectPattern($result['usages'], $contents, $file, '/\bprocess\.env\.([A-Z][A-Z0-9_]*)/', 'node', $declaredFilter);
-            $this->collectPattern($result['usages'], $contents, $file, '/\bprocess\.env\s*\[\s*[\'\"]([A-Z][A-Z0-9_]*)[\'\"]\s*\]/', 'node', $declaredFilter);
+            $this->collectPattern($result['usages'], $contents, $file, '/\bimport\.meta\.env\.([A-Za-z_$][A-Za-z0-9_$]*)/', 'vite', $viteFilter);
+            $this->collectPattern($result['usages'], $contents, $file, '/\bimport\.meta\.env\s*\[\s*[\'\"]([A-Za-z0-9_.]+)[\'\"]\s*\]/', 'vite', $viteFilter);
+            $this->collectPattern($result['usages'], $contents, $file, '/\bprocess\.env\.([A-Za-z_$][A-Za-z0-9_$]*)/', 'node', $declaredFilter);
+            $this->collectPattern($result['usages'], $contents, $file, '/\bprocess\.env\s*\[\s*[\'\"]([A-Za-z0-9_.]+)[\'\"]\s*\]/', 'node', $declaredFilter);
 
             if (preg_match_all('/\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*loadEnv\s*\(/', $contents, $loadEnvVariables)) {
                 foreach (array_unique($loadEnvVariables[1]) as $variable) {
@@ -58,7 +58,7 @@ final class TextEnvironmentScanner
                         $result['usages'],
                         $contents,
                         $file,
-                        '/\b'.$quotedVariable.'\.([A-Z][A-Z0-9_]*)/',
+                        '/\b'.$quotedVariable.'\.([A-Za-z_$][A-Za-z0-9_$]*)/',
                         'vite-load-env',
                         $viteFilter,
                     );
@@ -66,7 +66,7 @@ final class TextEnvironmentScanner
                         $result['usages'],
                         $contents,
                         $file,
-                        '/\b'.$quotedVariable.'\s*\[\s*[\'\"]([A-Z][A-Z0-9_]*)[\'\"]\s*\]/',
+                        '/\b'.$quotedVariable.'\s*\[\s*[\'\"]([A-Za-z0-9_.]+)[\'\"]\s*\]/',
                         'vite-load-env',
                         $viteFilter,
                     );
@@ -79,6 +79,13 @@ final class TextEnvironmentScanner
                     );
                 }
             }
+
+            $this->collectDirectDestructuredLoadEnv(
+                $result['usages'],
+                $contents,
+                $file,
+                $viteFilter,
+            );
 
             if (str_ends_with($file, '.blade.php') && preg_match_all('/(?<![A-Za-z0-9_:>])(?:\\\\)?env\(\s*([\'\"])([^\'\"]+)\1/', $contents, $matches, PREG_OFFSET_CAPTURE)) {
                 foreach ($matches[2] as [$key, $offset]) {
@@ -143,7 +150,7 @@ final class TextEnvironmentScanner
         }
 
         foreach ($matches[1] as [$members, $membersOffset]) {
-            if (! preg_match_all('/(?:^|,)\s*([A-Z][A-Z0-9_]*)\b/', $members, $keys, PREG_OFFSET_CAPTURE)) {
+            if (! preg_match_all('/(?:^|,)\s*([A-Za-z_$][A-Za-z0-9_$]*)\b/', $members, $keys, PREG_OFFSET_CAPTURE)) {
                 continue;
             }
 
@@ -157,6 +164,42 @@ final class TextEnvironmentScanner
                     'key' => $key,
                     'path' => $file,
                     'line' => substr_count(substr($contents, 0, $absoluteOffset), "\n") + 1,
+                    'source' => 'vite-load-env',
+                ];
+            }
+        }
+    }
+
+    /**
+     * @param  list<array{key:string, path:string, line:int, source:string}>  $target
+     * @param  callable(string): bool  $filter
+     */
+    private function collectDirectDestructuredLoadEnv(
+        array &$target,
+        string $contents,
+        string $file,
+        callable $filter,
+    ): void {
+        $pattern = '/\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*loadEnv\s*\(/';
+
+        if (! preg_match_all($pattern, $contents, $matches, PREG_OFFSET_CAPTURE)) {
+            return;
+        }
+
+        foreach ($matches[1] as [$members, $membersOffset]) {
+            if (! preg_match_all('/(?:^|,)\s*([A-Za-z_$][A-Za-z0-9_$]*)\b/', $members, $keys, PREG_OFFSET_CAPTURE)) {
+                continue;
+            }
+
+            foreach ($keys[1] as [$key, $offset]) {
+                if (! $filter($key)) {
+                    continue;
+                }
+
+                $target[] = [
+                    'key' => $key,
+                    'path' => $file,
+                    'line' => substr_count(substr($contents, 0, $membersOffset + $offset), "\n") + 1,
                     'source' => 'vite-load-env',
                 ];
             }

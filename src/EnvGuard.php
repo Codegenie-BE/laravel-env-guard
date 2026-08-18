@@ -294,16 +294,18 @@ final class EnvGuard
 
         if (is_array($activeScan) && $activeScan['exists']) {
             foreach ($activeScan['keys'] as $key => $meta) {
-                if (! isset($documentedKeys[$key])) {
-                    $findings[] = $this->finding(
-                        'warning',
-                        'missing-from-example',
-                        $key,
-                        sprintf('Environment key %s exists in the active environment file but is not documented in .env.example.', $key),
-                        $activePath,
-                        $meta['line'],
-                    );
+                if ($this->isIgnored($key) || isset($documentedKeys[$key])) {
+                    continue;
                 }
+
+                $findings[] = $this->finding(
+                    'warning',
+                    'missing-from-example',
+                    $key,
+                    sprintf('Environment key %s exists in the active environment file but is not documented in .env.example.', $key),
+                    $activePath,
+                    $meta['line'],
+                );
             }
         }
 
@@ -329,7 +331,7 @@ final class EnvGuard
         }
 
         $phpUnitKeys = array_fill_keys($textScan['phpunit_keys'], true);
-        $comparisonPaths = array_values(array_diff($environmentPaths, [$activePath], $referencePaths));
+        $comparisonPaths = array_values(array_diff($this->comparisonPaths(), [$activePath], $referencePaths));
         $projectKeys = array_fill_keys(array_keys($usages), true);
 
         foreach ($comparisonPaths as $path) {
@@ -396,16 +398,19 @@ final class EnvGuard
     {
         $files = [];
         $maxSize = max(1, (int) config('env-guard.max_file_size', 1_048_576));
-        $paths = (array) config('env-guard.scan_paths', []);
-        $paths[] = $this->app->configPath();
+        $configuredPaths = (array) config('env-guard.scan_paths', []);
+        $configuredPaths[] = $this->app->configPath();
+        $paths = [];
 
-        foreach (array_unique($paths) as $configuredPath) {
+        foreach ($configuredPaths as $configuredPath) {
             if (! is_string($configuredPath) || $configuredPath === '') {
                 continue;
             }
 
-            $path = $this->resolveBasePath($configuredPath);
+            $paths[] = $this->resolveBasePath($configuredPath);
+        }
 
+        foreach (array_unique($paths) as $path) {
             if (is_file($path)) {
                 $this->maybeAddSourceFile($files, $path, $maxSize);
 
@@ -485,7 +490,7 @@ final class EnvGuard
         }
 
         $normalized = strtolower(str_replace('\\', '/', $path));
-        $extensions = ['.php', '.blade.php', '.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte', '.json', '.xml', '.yml', '.yaml', '.sh'];
+        $extensions = ['.php', '.blade.php', '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts', '.vue', '.svelte', '.json', '.xml', '.yml', '.yaml', '.sh'];
 
         $supported = $allowAnyText;
 
@@ -506,14 +511,12 @@ final class EnvGuard
     /** @return list<string> */
     private function environmentPaths(): array
     {
-        $paths = [$this->app->environmentFilePath(), ...$this->referencePaths()];
+        $paths = [
+            $this->app->environmentFilePath(),
+            ...$this->referencePaths(),
+            ...$this->comparisonPaths(),
+        ];
         $environmentPath = $this->app->environmentPath();
-
-        foreach ((array) config('env-guard.compare_files', []) as $file) {
-            if (is_string($file) && $file !== '') {
-                $paths[] = $this->resolveEnvironmentPath($file);
-            }
-        }
 
         if ((bool) config('env-guard.discover_environment_files', true) && is_dir($environmentPath)) {
             foreach (glob(rtrim($environmentPath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'.env.*') ?: [] as $path) {
@@ -531,6 +534,20 @@ final class EnvGuard
         sort($paths);
 
         return $paths;
+    }
+
+    /** @return list<string> */
+    private function comparisonPaths(): array
+    {
+        $paths = [];
+
+        foreach ((array) config('env-guard.compare_files', []) as $file) {
+            if (is_string($file) && $file !== '') {
+                $paths[] = $this->resolveEnvironmentPath($file);
+            }
+        }
+
+        return array_values(array_unique($paths));
     }
 
     /** @return list<string> */
