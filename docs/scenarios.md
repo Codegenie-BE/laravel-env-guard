@@ -8,12 +8,13 @@ Default behavior:
 
 - package discovery loads the service provider automatically;
 - the guard runs when `app()->environment()` is `local`;
+- automatic full-project scans are console-first through `console_only`;
 - no custom Artisan command is required;
 - deterministic errors can fail fast;
-- findings are logged when the scan result changes;
+- every audit reads current project files and logs its findings;
 - current findings are written to STDERR during guarded Artisan commands.
 
-Production, staging, and testing are not scanned unless explicitly added to `env-guard.environments`.
+Production, staging, and testing are not scanned unless explicitly added to `env-guard.environments`. Normal HTTP request boots are skipped while `console_only` remains enabled.
 
 ## 2. `.env` and `.env.example`
 
@@ -61,11 +62,9 @@ The console report contains only:
 - sanitized message;
 - relative path and line number when available.
 
-Console reporting is intentionally independent from the scan cache. Cached findings therefore remain visible on later Artisan commands.
+Every guarded Artisan boot performs a complete audit of the current relevant source and environment files. The same current findings are written to Laravel logging for that audit, and the console report is rendered without consulting persistent scan state.
 
-Laravel log output remains change-based: findings are logged only when the scan result is fresh. This keeps the log useful without repeating the same warning on every command.
-
-Set `console_output` to `false` to disable this presentation layer without disabling the audit.
+Set `console_output` to `false` to disable the STDERR presentation layer without disabling the audit or Laravel logging.
 
 ## 5. Additional Laravel environment files
 
@@ -184,7 +183,7 @@ Application-owned published package configuration under `config/` is scanned nor
 
 Laravel recommends not running `config:cache` during local development. If configuration is already cached while Env Guard is active, the package reports a warning because the currently running application may not reflect `.env` edits.
 
-The metadata fingerprint includes the Laravel configuration-cache state and the active cache path.
+Each audit reads Laravel's current configuration-cache state directly, so `config:cache` and `config:clear` transitions are observed without invalidating persistent Env Guard state.
 
 ## 18. Encrypted environment files
 
@@ -194,21 +193,21 @@ Auditing an encrypted file's key set would require decryption, which is delibera
 
 ## 19. Long-running workers and Octane
 
-The guard runs when the Laravel application boots. With Octane, queue workers, Reverb, or another long-running process, that means the scan runs when the worker/application starts rather than on every handled request. Restart/reload the worker after environment or source changes, as required for other boot-time configuration changes.
+With `console_only` enabled by default, automatic audits run on guarded console boots, including Artisan-started long-running processes such as queue workers, Reverb, and Octane startup. Normal HTTP request boots do not trigger a full source scan. Restart/reload a long-running process after source or environment changes when you want its startup audit to run again.
 
 ## 20. Filesystem and performance constraints
 
 Source analysis is limited to application-owned paths, configured project files and a configurable maximum file size. Explicit extensionless text files such as `Dockerfile` are supported, while binary files in configured project directories are skipped. Shell-style infrastructure references such as `${APP_NAME:-Laravel}` are recognized when the key belongs to the project.
 
-The result cache stores a metadata fingerprint plus sanitized findings. On the next Laravel bootstrap, unchanged metadata reuses the prior result instead of reparsing source files.
+Every audit reparses the current relevant files and does not persist findings or a source fingerprint between processes. `console_only` keeps this deterministic full scan off ordinary HTTP requests by default.
 
-The optional Laravel-key policy feeds its inactive exact-key set into the normal ignore-key configuration before inspection. Because ignore-key configuration participates in the fingerprint, a key becoming active or inactive invalidates an incompatible cached result.
+The optional Laravel-key policy feeds its inactive exact-key set into the normal ignore-key configuration before each inspection, so a key becoming active or inactive is evaluated immediately.
 
 Symlinked files are not followed by default, preventing accidental traversal outside the project tree.
 
 ## 21. Secrets
 
-No finding should ever contain an environment value. Console output, exception messages, logs and the metadata cache contain only key names, finding codes, paths, line numbers and sanitized diagnostic text.
+No finding should ever contain an environment value. Console output, exception messages, and logs contain only key names, finding codes, paths, line numbers and sanitized diagnostic text. Env Guard does not persist a findings cache.
 
 This invariant is part of the package's security contract.
 
@@ -224,7 +223,7 @@ Those scenarios verify that:
 - that warning appears both in Artisan output and Laravel logging;
 - environment values never appear in either diagnostic channel;
 - unsafe `env()` usage outside config still blocks Laravel boot;
-- configuration-cache transitions invalidate the metadata cache correctly.
+- configuration-cache transitions are observed directly by subsequent audits without persistent scan state.
 
 ## 23. Non-goals
 
