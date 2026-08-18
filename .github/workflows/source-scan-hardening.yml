@@ -1,0 +1,61 @@
+name: source-scan-hardening
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Apply and validate reviewed hardening
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/source-scan-comment-hardening
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: pcov
+          tools: composer:v2
+
+      - name: Install Laravel 13 development dependencies
+        run: |
+          composer require --dev "laravel/framework:^13.0" "orchestra/testbench:^11.0" --no-update --no-interaction
+          composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Apply reviewed changes
+        run: python .github/source-scan-hardening.py
+
+      - name: Format
+        run: composer format
+
+      - name: Static analysis
+        run: composer analyse
+
+      - name: Validate package
+        run: composer validate --strict
+
+      - name: Audit dependencies
+        run: composer audit --no-interaction
+
+      - name: Tests and coverage
+        run: composer test:coverage
+
+      - name: Commit validated non-workflow changes
+        run: |
+          git show origin/main:composer.json > composer.json
+          git show origin/main:.github/workflows/tests.yml > .github/workflows/tests.yml
+          rm .github/source-scan-hardening.py
+          git add -A
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Harden source scanning and comment handling"
+          git push origin HEAD:agent/source-scan-comment-hardening
