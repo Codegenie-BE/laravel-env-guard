@@ -1,12 +1,15 @@
 # Laravel Env Guard
 
 [![Tests](https://github.com/Codegenie-BE/laravel-env-guard/actions/workflows/tests.yml/badge.svg)](https://github.com/Codegenie-BE/laravel-env-guard/actions/workflows/tests.yml)
+[![Distribution](https://github.com/Codegenie-BE/laravel-env-guard/actions/workflows/distribution.yml/badge.svg)](https://github.com/Codegenie-BE/laravel-env-guard/actions/workflows/distribution.yml)
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/codegenie-be/laravel-env-guard.svg)](https://packagist.org/packages/codegenie-be/laravel-env-guard)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 [![PHP](https://img.shields.io/badge/php-%5E8.2-777BB4.svg)](https://www.php.net/supported-versions.php)
 [![Laravel](https://img.shields.io/badge/laravel-12%20%7C%2013-FF2D20.svg)](https://laravel.com/docs/releases)
 
 **by [Codegenie](https://www.codegenie.be)**
+
+**Catch Laravel environment drift and unsafe `env()` usage before configuration caching turns it into a deployment bug.**
 
 Laravel Env Guard automatically audits environment-variable usage while a Laravel application boots in development. It catches environment drift before it becomes a deployment problem, without requiring a command and without storing secret values.
 
@@ -19,6 +22,7 @@ That is enough. Laravel package discovery registers the guard automatically.
 By default it runs only when the application environment is `local`.
 
 - [Packagist](https://packagist.org/packages/codegenie-be/laravel-env-guard)
+- [Read the full scenario model](docs/scenarios.md)
 - [Ask a question](https://github.com/Codegenie-BE/laravel-env-guard/discussions)
 - [Report a bug or detection issue](https://github.com/Codegenie-BE/laravel-env-guard/issues/new/choose)
 
