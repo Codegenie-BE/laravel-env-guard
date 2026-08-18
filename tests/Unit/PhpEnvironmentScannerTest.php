@@ -44,6 +44,28 @@ PHPFILE);
         ->and($result['dynamic'][0]['in_config'])->toBeFalse();
 });
 
+it('recognizes literal environment keys passed with named arguments', function () {
+    file_put_contents($this->root.'/config/services.php', <<<'PHPFILE'
+<?php
+return ['token' => env(key: 'NAMED_CONFIG')];
+PHPFILE);
+    file_put_contents($this->root.'/app/Example.php', <<<'PHPFILE'
+<?php
+use Illuminate\Support\Env as LaravelEnv;
+
+$one = env(key: 'NAMED_OUTSIDE');
+$two = LaravelEnv::get(key: 'NAMED_FACADE');
+PHPFILE);
+
+    $result = (new PhpEnvironmentScanner)->scan([
+        $this->root.'/config/services.php',
+        $this->root.'/app/Example.php',
+    ], $this->root.'/config');
+
+    expect(array_column($result['usages'], 'key'))->toBe(['NAMED_CONFIG', 'NAMED_OUTSIDE', 'NAMED_FACADE'])
+        ->and($result['dynamic'])->toBe([]);
+});
+
 it('detects facade and raw environment access without scanning comments or strings', function () {
     file_put_contents($this->root.'/app/Example.php', <<<'PHPFILE'
 <?php

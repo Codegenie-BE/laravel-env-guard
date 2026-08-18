@@ -243,7 +243,7 @@ Suppress intentional cases explicitly:
 ],
 ```
 
-The package deliberately does not scan `vendor/`. Scanning every dependency would make optional package variables appear to be mandatory application variables and would substantially increase boot-time work.
+The package deliberately prunes `vendor/`, `node_modules/`, `.git/`, `storage/`, and `bootstrap/cache/` even when a configured scan path points at the project root. Scanning dependencies or generated state would create false environment requirements and unnecessary boot-time work.
 
 ## Performance
 

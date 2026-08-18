@@ -34,6 +34,7 @@ final class TextEnvironmentScanner
                 continue;
             }
 
+            $contents = $this->maskComments($contents, $file);
             $basename = basename($file);
 
             if ($basename === 'phpunit.xml' || $basename === 'phpunit.xml.dist') {
@@ -103,6 +104,42 @@ final class TextEnvironmentScanner
         }
 
         return $result;
+    }
+
+    private function maskComments(string $contents, string $file): string
+    {
+        $contents = $this->maskPattern($contents, '/<!--.*?-->/s');
+
+        if (str_ends_with($file, '.blade.php')) {
+            $contents = $this->maskPattern($contents, '/\{\{--.*?--\}\}/s');
+        }
+
+        $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+
+        if (in_array($extension, ['js', 'jsx', 'mjs', 'cjs', 'ts', 'tsx', 'mts', 'cts', 'vue', 'svelte'], true)) {
+            $contents = $this->maskPattern(
+                $contents,
+                '~([\'"`])(?:\\.|(?!\1)[\s\S])*\1(*SKIP)(*F)|//[^\r\n]*|/\*[\s\S]*?\*/~',
+            );
+        }
+
+        if ($this->isInfrastructureFile($file)) {
+            $contents = $this->maskPattern(
+                $contents,
+                '~([\'"])(?:\\.|(?!\1).)*\1(*SKIP)(*F)|\#[^\r\n]*~',
+            );
+        }
+
+        return $contents;
+    }
+
+    private function maskPattern(string $contents, string $pattern): string
+    {
+        return preg_replace_callback(
+            $pattern,
+            static fn (array $match): string => preg_replace('/[^\r\n]/', ' ', $match[0]) ?? $match[0],
+            $contents,
+        ) ?? $contents;
     }
 
     /** @param list<array{key:string, path:string, line:int, source:string}> $target */
