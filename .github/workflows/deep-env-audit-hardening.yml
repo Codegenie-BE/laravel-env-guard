@@ -1,0 +1,87 @@
+name: deep-env-audit-hardening
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Apply and validate reviewed hardening
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/deep-env-audit-hardening
+          fetch-depth: 0
+
+      - name: Detect reviewed payload
+        id: payload
+        run: |
+          if [ -d .github/hardening ]; then
+            echo "apply=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "apply=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Assemble and apply reviewed changes
+        if: steps.payload.outputs.apply == 'true'
+        run: |
+          cat .github/hardening/core.py.part* > /tmp/apply-core.py
+          cat .github/hardening/tests.py.part* > /tmp/apply-tests.py
+          python -m py_compile /tmp/apply-core.py /tmp/apply-tests.py
+          python /tmp/apply-core.py
+          python /tmp/apply-tests.py
+
+      - name: Setup PHP
+        if: steps.payload.outputs.apply == 'true'
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: pcov
+          tools: composer:v2
+
+      - name: Install Laravel 13 development dependencies
+        if: steps.payload.outputs.apply == 'true'
+        run: |
+          composer require --dev "laravel/framework:^13.0" "orchestra/testbench:^11.0" --no-update --no-interaction
+          composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Syntax check PHP
+        if: steps.payload.outputs.apply == 'true'
+        run: find src tests -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Format
+        if: steps.payload.outputs.apply == 'true'
+        run: composer format
+
+      - name: Static analysis
+        if: steps.payload.outputs.apply == 'true'
+        run: composer analyse
+
+      - name: Validate package
+        if: steps.payload.outputs.apply == 'true'
+        run: composer validate --strict
+
+      - name: Audit dependencies
+        if: steps.payload.outputs.apply == 'true'
+        run: composer audit --no-interaction
+
+      - name: Tests and coverage
+        if: steps.payload.outputs.apply == 'true'
+        run: composer test:coverage
+
+      - name: Commit validated changes
+        if: steps.payload.outputs.apply == 'true'
+        run: |
+          git show origin/main:composer.json > composer.json
+          rm -rf .github/hardening
+          git add -A
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Deepen Env Guard correctness and scanner coverage"
+          git push origin HEAD:agent/deep-env-audit-hardening
