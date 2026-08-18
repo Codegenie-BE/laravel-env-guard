@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Usage questions and environment feedback
+    url: https://github.com/Codegenie-BE/laravel-env-guard/discussions
+    about: Ask usage questions or discuss Laravel environment edge cases in Discussions.
+  - name: Security policy
+    url: https://github.com/Codegenie-BE/laravel-env-guard/blob/main/SECURITY.md
+    about: Follow the private reporting guidance in SECURITY.md. Never open a public vulnerability issue.
