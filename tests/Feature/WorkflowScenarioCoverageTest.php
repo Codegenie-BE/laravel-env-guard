@@ -29,16 +29,24 @@ it('keeps the complete risk-based CI scenario model enforced', function (): void
         ->not->toMatch('/(?:laravel\/framework|orchestra\/testbench|pestphp\/pest):\^/')
         ->not->toMatch('/(?:framework|testbench|pest):\s*[\'\"]\^/');
 
-    preg_match_all('/^\s*uses:\s*([^\s#]+)/m', $workflow, $matches);
+    assertWorkflowActionsArePinned($workflow);
+});
 
-    expect($matches[1])->not->toBe([]);
+it('tests the exact Composer distribution archive in a fresh Laravel application', function (): void {
+    $workflow = (string) file_get_contents(__DIR__.'/../../.github/workflows/distribution.yml');
 
-    foreach ($matches[1] as $actionReference) {
-        $separator = strrpos($actionReference, '@');
-        $revision = $separator === false ? '' : substr($actionReference, $separator + 1);
-
-        expect($revision)->toMatch('/^[a-f0-9]{40}$/i');
+    foreach ([
+        'composer archive --format=zip',
+        'src/EnvGuard.php',
+        'config/env-guard.php',
+        'Development-only path leaked into release archive',
+        'composer --working-dir="$package_root" validate --strict',
+        'php tests/E2E/runner.php --laravel=13 --package-root="$PACKAGE_ROOT"',
+    ] as $requirement) {
+        expect($workflow)->toContain($requirement);
     }
+
+    assertWorkflowActionsArePinned($workflow);
 });
 
 it('keeps temporary source-mutation workflows out of the maintained branch', function (): void {
@@ -58,3 +66,17 @@ it('keeps temporary source-mutation workflows out of the maintained branch', fun
             ->not->toContain('Apply CI portability fix');
     }
 });
+
+function assertWorkflowActionsArePinned(string $workflow): void
+{
+    preg_match_all('/^\s*uses:\s*([^\s#]+)/m', $workflow, $matches);
+
+    expect($matches[1])->not->toBe([]);
+
+    foreach ($matches[1] as $actionReference) {
+        $separator = strrpos($actionReference, '@');
+        $revision = $separator === false ? '' : substr($actionReference, $separator + 1);
+
+        expect($revision)->toMatch('/^[a-f0-9]{40}$/i');
+    }
+}
