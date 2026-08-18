@@ -32,6 +32,7 @@ jobs:
 
       - name: Apply reviewed patch
         run: |
+          sed -i 's/@@ -611,9 +614,66 @@/@@ -611,9 +614,64 @@/' .github/cache-parser-ci-hardening.patch
           git apply --check .github/cache-parser-ci-hardening.patch
           git apply .github/cache-parser-ci-hardening.patch
 
