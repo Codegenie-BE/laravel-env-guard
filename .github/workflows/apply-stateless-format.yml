@@ -1,0 +1,46 @@
+name: Format stateless audit refactor
+
+on:
+  push:
+    branches:
+      - refactor/stateless-audits
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@e9c34d20ec4210b7388f809c9331027f020a1fdc # v2
+        with:
+          php-version: '8.5'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies and format
+        run: |
+          set -euo pipefail
+          composer install --no-interaction --prefer-dist --no-progress
+          composer format
+          php -l src/EnvGuard.php
+          php -l tests/Feature/EnvGuardTest.php
+          php -l tests/E2E/runner.php
+
+      - name: Remove one-time workflow and publish formatting
+        run: |
+          set -euo pipefail
+          rm .github/workflows/apply-stateless-format.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/EnvGuard.php tests/Feature/EnvGuardTest.php tests/E2E/runner.php .github/workflows/apply-stateless-format.yml
+          git diff --cached --quiet && exit 0
+          git commit -m 'Format stateless audit refactor'
+          git push origin HEAD:refactor/stateless-audits
