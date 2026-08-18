@@ -148,7 +148,7 @@ The guard runs when the Laravel application boots. With Octane, queue workers, R
 
 ## 18. Filesystem and performance constraints
 
-Source analysis is limited to application-owned paths and a configurable maximum file size. The result cache stores a metadata fingerprint plus sanitized findings. On the next Laravel bootstrap, unchanged metadata reuses the prior result instead of reparsing source files.
+Source analysis is limited to application-owned paths, configured project files and a configurable maximum file size. Shell-style infrastructure references such as `${APP_NAME:-Laravel}` are recognized when the key belongs to the project. The result cache stores a metadata fingerprint plus sanitized findings. On the next Laravel bootstrap, unchanged metadata reuses the prior result instead of reparsing source files.
 
 Symlinked files are not followed by default, preventing accidental traversal outside the project tree.
 

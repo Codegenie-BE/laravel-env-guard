@@ -53,6 +53,8 @@ return [
         'composer.json',
         'package.json',
         'phpunit.xml',
+        'phpunit.xml.dist',
+        'public/index.php',
         'vite.config.js',
         'vite.config.ts',
         'compose.yaml',

@@ -39,17 +39,25 @@ it('does not treat assignments inside multiline quoted values as environment key
     file_put_contents($path, <<<'ENV'
 PRIVATE_KEY="-----BEGIN KEY-----
 FAKE_KEY=not-an-environment-variable
+REFERENCE=${REAL_KEY}
 -----END KEY-----"
+# COMMENTED_BLOCK="documentation
+# FAKE_COMMENTED_KEY=not-a-key
+# end"
 REAL_KEY=value
 SINGLE_LITERAL='${REAL_KEY}'
 ESCAPED_LITERAL="\${REAL_KEY}"
+DOUBLE_BACKSLASH="\\${REAL_KEY}"
 EXPANDED="${REAL_KEY}"
+SINGLE_MULTILINE='escaped \' quote
+FAKE_SINGLE_KEY=not-an-environment-variable
+end'
 ENV);
 
     $result = (new EnvironmentFileScanner)->scan($path, true);
 
-    expect(array_keys($result['keys']))->toBe(['PRIVATE_KEY', 'REAL_KEY', 'SINGLE_LITERAL', 'ESCAPED_LITERAL', 'EXPANDED'])
-        ->and(array_column($result['interpolations'], 'key'))->toBe(['REAL_KEY']);
+    expect(array_keys($result['keys']))->toBe(['PRIVATE_KEY', 'COMMENTED_BLOCK', 'REAL_KEY', 'SINGLE_LITERAL', 'ESCAPED_LITERAL', 'DOUBLE_BACKSLASH', 'EXPANDED', 'SINGLE_MULTILINE'])
+        ->and(array_column($result['interpolations'], 'key'))->toBe(['REAL_KEY', 'REAL_KEY', 'REAL_KEY']);
 
     @unlink($path);
 });

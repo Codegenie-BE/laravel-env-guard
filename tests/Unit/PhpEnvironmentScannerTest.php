@@ -27,6 +27,8 @@ PHPFILE);
 <?php
 $value = env("OUTSIDE_TOKEN");
 $dynamic = env($name);
+$concatenated = env('PREFIX_'.$name);
+$fullyQualified = \env('FULLY_QUALIFIED');
 PHPFILE);
 
     $result = (new PhpEnvironmentScanner)->scan([
@@ -34,28 +36,36 @@ PHPFILE);
         $this->root.'/app/Example.php',
     ], $this->root.'/config');
 
-    expect($result['usages'])->toHaveCount(2)
+    expect($result['usages'])->toHaveCount(3)
         ->and($result['usages'][0]['in_config'])->toBeTrue()
         ->and($result['usages'][1]['in_config'])->toBeFalse()
-        ->and($result['dynamic'])->toHaveCount(1)
+        ->and(array_column($result['usages'], 'key'))->toContain('FULLY_QUALIFIED')
+        ->and($result['dynamic'])->toHaveCount(2)
         ->and($result['dynamic'][0]['in_config'])->toBeFalse();
 });
 
-it('detects imported Env facade and raw environment access', function () {
+it('detects facade and raw environment access without scanning comments or strings', function () {
     file_put_contents($this->root.'/app/Example.php', <<<'PHPFILE'
 <?php
-use Illuminate\Support\Env;
+use Illuminate\Support\Env as LaravelEnv;
 
-$one = Env::get('ONE');
-$two = getenv('TWO');
-$three = $_ENV['THREE'];
-$four = $_SERVER["FOUR"];
+$one = LaravelEnv::get('ONE');
+$two = \Illuminate\Support\Env::get('TWO');
+$dynamic = LaravelEnv::get('PREFIX_'.$suffix);
+$three = getenv('THREE', true);
+$four = \getenv('FOUR');
+$five = $_ENV['FIVE'];
+$six = $_SERVER["SIX"];
+// LaravelEnv::get('COMMENT_ONLY');
+$text = "getenv('STRING_ONLY')";
 PHPFILE);
 
     $result = (new PhpEnvironmentScanner)->scan([
         $this->root.'/app/Example.php',
     ], $this->root.'/config');
 
-    expect(array_column($result['usages'], 'key'))->toContain('ONE')
-        ->and(array_column($result['raw'], 'key'))->toBe(['TWO', 'THREE', 'FOUR']);
+    expect(array_column($result['usages'], 'key'))->toBe(['ONE', 'TWO'])
+        ->and($result['dynamic'])->toHaveCount(1)
+        ->and($result['dynamic'][0]['source'])->toBe('Env::get')
+        ->and(array_column($result['raw'], 'key'))->toBe(['THREE', 'FOUR', 'FIVE', 'SIX']);
 });

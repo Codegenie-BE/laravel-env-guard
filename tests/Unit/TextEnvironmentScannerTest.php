@@ -14,7 +14,7 @@ it('detects Vite, Blade, phpunit and infrastructure usage', function () {
     file_put_contents($vite, "const name = import.meta.env.VITE_APP_NAME;\nconst mode = import.meta.env.MODE;\n");
     file_put_contents($blade, "{{ env('BLADE_KEY') }}\n");
     file_put_contents($phpunit, '<php><env name="TEST_KEY" value="1"/></php>');
-    file_put_contents($compose, "services:\n  app:\n    environment:\n      APP_NAME: \${APP_NAME}\n");
+    file_put_contents($compose, "services:\n  app:\n    environment:\n      APP_NAME: \${APP_NAME:-Laravel}\n");
 
     $result = (new TextEnvironmentScanner)->scan([$vite, $blade, $phpunit, $compose], [
         'VITE_APP_NAME',
@@ -41,12 +41,16 @@ it('detects Vite loadEnv access', function () {
 import { loadEnv } from 'vite';
 const env = loadEnv(mode, process.cwd(), '');
 console.log(env.VITE_HMR_HOST);
-const { VITE_OTHER_KEY } = env;
+console.log(env['DECLARED_BACKEND_KEY']);
+const { VITE_OTHER_KEY, VITE_ALIASED: localName, backend: VITE_FALSE_ALIAS } = env;
+const unrelated = object.VITE_FALSE_POSITIVE;
 JS);
 
-    $result = (new TextEnvironmentScanner)->scan([$path], []);
+    $result = (new TextEnvironmentScanner)->scan([$path], ['DECLARED_BACKEND_KEY']);
+    $keys = array_column($result['usages'], 'key');
 
-    expect(array_column($result['usages'], 'key'))->toContain('VITE_HMR_HOST', 'VITE_OTHER_KEY');
+    expect($keys)->toContain('VITE_HMR_HOST', 'VITE_OTHER_KEY', 'VITE_ALIASED', 'DECLARED_BACKEND_KEY')
+        ->and($keys)->not->toContain('VITE_FALSE_POSITIVE', 'VITE_FALSE_ALIAS');
 
     @unlink($path);
 });

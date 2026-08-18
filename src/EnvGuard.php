@@ -58,8 +58,8 @@ final class EnvGuard
     }
 
     /**
-     * @param list<string> $sourceFiles
-     * @param list<string> $environmentPaths
+     * @param  list<string>  $sourceFiles
+     * @param  list<string>  $environmentPaths
      * @return list<array<string, mixed>>
      */
     private function scan(array $sourceFiles, array $environmentPaths): array
@@ -232,7 +232,7 @@ final class EnvGuard
             }
 
             $caseMatches = $declaredCaseInsensitive[strtolower($key)] ?? [];
-            $first = $locations[0] ?? [];
+            $first = $locations[0];
 
             if ($caseMatches !== []) {
                 $findings[] = $this->finding(
@@ -240,8 +240,8 @@ final class EnvGuard
                     'case-mismatch',
                     $key,
                     sprintf('Environment key %s differs in case from declared key %s.', $key, implode(' / ', $caseMatches)),
-                    $first['path'] ?? null,
-                    $first['line'] ?? null,
+                    $first['path'],
+                    $first['line'],
                 );
 
                 continue;
@@ -252,8 +252,8 @@ final class EnvGuard
                 'used-but-undeclared',
                 $key,
                 sprintf('Environment key %s is referenced by the project but is not declared in any scanned environment file.', $key),
-                $first['path'] ?? null,
-                $first['line'] ?? null,
+                $first['path'],
+                $first['line'],
             );
         }
 
@@ -408,6 +408,7 @@ final class EnvGuard
 
             if (is_file($path)) {
                 $this->maybeAddSourceFile($files, $path, $maxSize);
+
                 continue;
             }
 
@@ -590,6 +591,7 @@ final class EnvGuard
         foreach ($files as $file) {
             if (! file_exists($file)) {
                 $parts[] = $file.'|missing';
+
                 continue;
             }
 
@@ -597,15 +599,16 @@ final class EnvGuard
 
             if ($stat === false) {
                 $parts[] = $file.'|unreadable';
+
                 continue;
             }
 
             $parts[] = implode('|', [
                 $file,
-                $stat['mtime'] ?? 0,
-                $stat['ctime'] ?? 0,
-                $stat['size'] ?? 0,
-                $stat['ino'] ?? 0,
+                $stat['mtime'],
+                $stat['ctime'],
+                $stat['size'],
+                $stat['ino'],
             ]);
         }
 
@@ -733,7 +736,7 @@ final class EnvGuard
     }
 
     /**
-     * @param list<array<string, mixed>> $findings
+     * @param  list<array<string, mixed>>  $findings
      * @return list<array<string, mixed>>
      */
     private function deduplicateAndSort(array $findings): array

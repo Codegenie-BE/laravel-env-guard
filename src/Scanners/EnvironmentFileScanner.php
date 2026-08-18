@@ -9,7 +9,7 @@ final class EnvironmentFileScanner
      *     path:string,
      *     exists:bool,
      *     keys:array<string, array{line:int, commented:bool}>,
-     *     duplicates:list<array{key:string, lines:list<int>>>,
+     *     duplicates:list<array{key:string, lines:list<int>}>,
      *     interpolations:list<array{key:string, line:int}>
      * }
      */
@@ -37,6 +37,7 @@ final class EnvironmentFileScanner
         $seen = [];
         $duplicateLines = [];
         $multilineQuote = null;
+        $multilineCommented = false;
         $name = '[\\p{L}_][\\p{L}\\p{N}_.-]*';
 
         while (($line = fgets($handle)) !== false) {
@@ -44,11 +45,29 @@ final class EnvironmentFileScanner
             $candidate = ltrim(rtrim($line, "\r\n"));
 
             if ($multilineQuote !== null) {
-                if ($this->closesQuotedValue($candidate, $multilineQuote)) {
-                    $multilineQuote = null;
+                $continuation = $candidate;
+
+                if ($multilineCommented) {
+                    if (! str_starts_with($continuation, '#')) {
+                        $multilineQuote = null;
+                        $multilineCommented = false;
+                    } else {
+                        $continuation = ltrim(substr($continuation, 1));
+                    }
                 }
 
-                continue;
+                if ($multilineQuote !== null) {
+                    if (! $multilineCommented && $multilineQuote === '"') {
+                        $this->appendInterpolations($result['interpolations'], $continuation, $name, $lineNumber);
+                    }
+
+                    if ($this->closesQuotedValue($continuation, $multilineQuote)) {
+                        $multilineQuote = null;
+                        $multilineCommented = false;
+                    }
+
+                    continue;
+                }
             }
 
             $commented = false;
@@ -89,20 +108,16 @@ final class EnvironmentFileScanner
                 ];
             }
 
-            if (! $commented && ! str_starts_with($value, "'") && preg_match_all('/(?<!\\\\)\\$\\{('.$name.')\\}/u', $value, $references)) {
-                foreach ($references[1] as $reference) {
-                    $result['interpolations'][] = [
-                        'key' => $reference,
-                        'line' => $lineNumber,
-                    ];
-                }
+            if (! $commented && ! str_starts_with($value, "'")) {
+                $this->appendInterpolations($result['interpolations'], $value, $name, $lineNumber);
             }
 
-            if (! $commented && ($value[0] ?? null) !== null && in_array($value[0], ["'", '"'], true)) {
+            if (($value[0] ?? null) !== null && in_array($value[0], ["'", '"'], true)) {
                 $quote = $value[0];
 
                 if (! $this->closesQuotedValue(substr($value, 1), $quote)) {
                     $multilineQuote = $quote;
+                    $multilineCommented = $commented;
                 }
             }
 
@@ -121,6 +136,32 @@ final class EnvironmentFileScanner
         return $result;
     }
 
+    /** @param list<array{key:string, line:int}> $target */
+    private function appendInterpolations(array &$target, string $value, string $name, int $line): void
+    {
+        if (! preg_match_all('/\$\{('.$name.')\}/u', $value, $references, PREG_OFFSET_CAPTURE)) {
+            return;
+        }
+
+        foreach ($references[1] as $index => [$reference]) {
+            $offset = $references[0][$index][1];
+            $backslashes = 0;
+
+            for ($position = $offset - 1; $position >= 0 && $value[$position] === '\\'; $position--) {
+                $backslashes++;
+            }
+
+            if ($backslashes % 2 === 1) {
+                continue;
+            }
+
+            $target[] = [
+                'key' => $reference,
+                'line' => $line,
+            ];
+        }
+    }
+
     private function closesQuotedValue(string $value, string $quote): bool
     {
         $escaped = false;
@@ -129,22 +170,17 @@ final class EnvironmentFileScanner
         for ($index = 0; $index < $length; $index++) {
             $character = $value[$index];
 
-            if ($quote === "'" && $character === "'") {
+            if ($character === $quote && ! $escaped) {
                 return true;
             }
 
-            if ($quote === '"') {
-                if ($character === '"' && ! $escaped) {
-                    return true;
-                }
+            if ($character === '\\') {
+                $escaped = ! $escaped;
 
-                if ($character === '\\') {
-                    $escaped = ! $escaped;
-                    continue;
-                }
-
-                $escaped = false;
+                continue;
             }
+
+            $escaped = false;
         }
 
         return false;
