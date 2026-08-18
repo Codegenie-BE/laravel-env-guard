@@ -38,6 +38,10 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Frontend scanning now distinguishes executable template expressions from comments, strings, regular-expression literals, and template text; it also covers direct environment destructuring.
 - PHPUnit `<server>` variables, UTF-8 BOM environment files, explicit extensionless text project files, binary-file skipping, malformed ignore patterns, and cross-platform path comparison are now covered.
 - Fresh Laravel 12 and Laravel 13 end-to-end scenarios now verify package discovery, blocking `env()` misuse, secret-value non-disclosure, and configuration-cache transitions in real applications.
+- Fresh-application E2E installs now use a deterministic copied Composer path repository instead of relying on VCS version inference or symlink behavior.
 - CI now validates minimum dependency sets, Linux ARM64 portability, pull-request dependency changes, the full supported PHP/Laravel matrix, and an independent 80% coverage gate while skipping expensive jobs for documentation-only changes.
+- CI portability now covers Windows-safe Composer version constraints and cross-platform environment-path assertions.
 - Composer quality scripts now include strict manifest, security and optimized-autoload checks, with `check:all` providing the complete local quality plus Pest gate.
 - Metadata cache invalidation now tracks Laravel configuration-cache state and cache path so `configuration-cached` diagnostics cannot become stale across `config:cache` and `config:clear` transitions.
+- Filesystem regression coverage now verifies custom Laravel environment paths and filenames, configured maximum source size, and that symlinked source files are not followed.
+- The exact Composer release archive is now validated for required runtime files, excluded development-only files, strict manifest validity, and installation into a fresh Laravel 13 application.
