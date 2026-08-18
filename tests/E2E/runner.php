@@ -8,11 +8,20 @@ $laravel = null;
 foreach (array_slice($argv, 1) as $argument) {
     if (str_starts_with($argument, '--laravel=')) {
         $laravel = substr($argument, strlen('--laravel='));
+    } elseif (str_starts_with($argument, '--package-root=')) {
+        $candidatePackageRoot = realpath(substr($argument, strlen('--package-root=')));
+
+        if (! is_string($candidatePackageRoot) || ! is_file($candidatePackageRoot.DIRECTORY_SEPARATOR.'composer.json')) {
+            fwrite(STDERR, "The supplied package root is invalid.\n");
+            exit(2);
+        }
+
+        $packageRoot = $candidatePackageRoot;
     }
 }
 
 if (! in_array($laravel, ['12', '13'], true)) {
-    fwrite(STDERR, "Usage: php tests/E2E/runner.php --laravel=12|13\n");
+    fwrite(STDERR, "Usage: php tests/E2E/runner.php --laravel=12|13 [--package-root=/path/to/package]\n");
     exit(2);
 }
 
@@ -128,23 +137,45 @@ try {
         '--no-progress',
     ], $temporaryRoot);
 
+    $repositoryDefinition = json_encode([
+        'type' => 'path',
+        'url' => $packageRoot,
+        'options' => [
+            'symlink' => false,
+            'versions' => [
+                'codegenie-be/laravel-env-guard' => 'dev-e2e',
+            ],
+        ],
+    ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+
     runE2eCommand([
         'composer',
         'config',
+        '--json',
         'repositories.env-guard',
-        'path',
-        $packageRoot,
+        $repositoryDefinition,
     ], $applicationRoot);
 
     runE2eCommand([
         'composer',
         'require',
-        'codegenie-be/laravel-env-guard:@dev',
+        'codegenie-be/laravel-env-guard:dev-e2e',
         '--with-all-dependencies',
         '--prefer-dist',
         '--no-interaction',
         '--no-progress',
     ], $applicationRoot);
+
+    $installedPackageRoot = $applicationRoot.DIRECTORY_SEPARATOR.'vendor'.DIRECTORY_SEPARATOR.'codegenie-be'.DIRECTORY_SEPARATOR.'laravel-env-guard';
+
+    if (! is_file($installedPackageRoot.DIRECTORY_SEPARATOR.'src'.DIRECTORY_SEPARATOR.'EnvGuard.php')
+        || ! is_file($installedPackageRoot.DIRECTORY_SEPARATOR.'config'.DIRECTORY_SEPARATOR.'env-guard.php')) {
+        throw new RuntimeException('Composer did not install the package runtime files.');
+    }
+
+    if (is_link($installedPackageRoot)) {
+        throw new RuntimeException('Composer symlinked the package instead of testing a copied install.');
+    }
 
     runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
 
