@@ -36,3 +36,18 @@ it('keeps the complete risk-based CI scenario model enforced', function (): void
         expect($revision)->toMatch('/^[a-f0-9]{40}$/i');
     }
 });
+
+it('keeps temporary source-mutation workflows out of the maintained branch', function (): void {
+    $root = dirname(__DIR__, 2);
+
+    expect(is_file($root.'/.github/workflows/apply-cache-fingerprint-fix.yml'))->toBeFalse();
+
+    foreach (array_merge(
+        glob($root.'/.github/workflows/*.yml') ?: [],
+        glob($root.'/.github/workflows/*.yaml') ?: [],
+    ) as $workflowPath) {
+        $workflow = (string) file_get_contents($workflowPath);
+
+        expect($workflow)->not->toContain('Apply reviewed cache fingerprint fix');
+    }
+});
