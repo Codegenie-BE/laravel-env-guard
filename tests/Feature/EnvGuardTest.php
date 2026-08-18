@@ -140,3 +140,44 @@ it('reuses cached findings until relevant file metadata changes', function () {
         ->and($second['fresh'])->toBeFalse()
         ->and($third['fresh'])->toBeTrue();
 });
+
+it('invalidates cached findings when runtime environment presence changes', function () {
+    file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\n");
+    file_put_contents($this->root.'/.env.example', "APP_NAME=\nENV_GUARD_EXTERNAL_TOKEN=\n");
+    file_put_contents($this->root.'/.env.testing', "APP_NAME=\n");
+    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\n");
+    putenv('ENV_GUARD_EXTERNAL_TOKEN=runtime-secret');
+
+    try {
+        $guard = buildEnvGuard($this->root);
+        $first = $guard->inspect();
+
+        putenv('ENV_GUARD_EXTERNAL_TOKEN');
+        $second = $guard->inspect();
+
+        expect($first['fresh'])->toBeTrue()
+            ->and(findingCodesFor($first['findings'], 'ENV_GUARD_EXTERNAL_TOKEN'))->not->toContain('missing-from-active')
+            ->and($second['fresh'])->toBeTrue()
+            ->and(findingCodesFor($second['findings'], 'ENV_GUARD_EXTERNAL_TOKEN'))->toContain('missing-from-active');
+    } finally {
+        putenv('ENV_GUARD_EXTERNAL_TOKEN');
+    }
+});
+
+it('invalidates cached findings when behavior configuration changes', function () {
+    file_put_contents($this->root.'/.env', "APP_NAME=Codegenie\nCONFIG_ONLY=value\n");
+    file_put_contents($this->root.'/.env.example', "APP_NAME=\n");
+    file_put_contents($this->root.'/.env.testing', "APP_NAME=\n");
+    file_put_contents($this->root.'/config/app.php', "<?php return ['name' => env('APP_NAME')];\n");
+
+    $guard = buildEnvGuard($this->root, ['ignore_keys' => ['CONFIG_ONLY']]);
+    $first = $guard->inspect();
+
+    config()->set('env-guard.ignore_keys', []);
+    $second = $guard->inspect();
+
+    expect($first['fresh'])->toBeTrue()
+        ->and(findingCodesFor($first['findings'], 'CONFIG_ONLY'))->toBe([])
+        ->and($second['fresh'])->toBeTrue()
+        ->and(findingCodesFor($second['findings'], 'CONFIG_ONLY'))->toContain('missing-from-example', 'possibly-unused-key');
+});

@@ -14,6 +14,8 @@ use Throwable;
 
 final class EnvGuard
 {
+    private const CACHE_VERSION = 2;
+
     public function __construct(
         private readonly Application $app,
         private readonly EnvironmentFileScanner $environmentFiles,
@@ -39,7 +41,8 @@ final class EnvGuard
         $fingerprint = $this->fingerprint(array_values(array_unique(array_merge($sourceFiles, $environmentPaths, $packageFiles))));
         $cached = $this->readCache();
 
-        if (($cached['fingerprint'] ?? null) === $fingerprint && isset($cached['findings']) && is_array($cached['findings'])) {
+        if (($cached['version'] ?? null) === self::CACHE_VERSION
+            && ($cached['fingerprint'] ?? null) === $fingerprint && isset($cached['findings']) && is_array($cached['findings'])) {
             return [
                 'findings' => array_values($cached['findings']),
                 'fresh' => false,
@@ -518,7 +521,7 @@ final class EnvGuard
         ];
         $environmentPath = $this->app->environmentPath();
 
-        if ((bool) config('env-guard.discover_environment_files', true) && is_dir($environmentPath)) {
+        if ((bool) config('env-guard.discover_environment_files', false) && is_dir($environmentPath)) {
             foreach (glob(rtrim($environmentPath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'.env.*') ?: [] as $path) {
                 $name = basename($path);
 
@@ -629,7 +632,57 @@ final class EnvGuard
             ]);
         }
 
+        $parts[] = 'configuration|'.$this->behaviorConfigurationFingerprint();
+        $parts[] = 'runtime-presence|'.$this->runtimePresenceFingerprint();
+
         return hash('sha256', implode("\n", $parts));
+    }
+
+    private function behaviorConfigurationFingerprint(): string
+    {
+        $keys = [
+            'scan_paths',
+            'project_files',
+            'project_directories',
+            'reference_files',
+            'compare_files',
+            'discover_environment_files',
+            'max_file_size',
+            'known_external_keys',
+            'ignore_keys',
+            'ignore_patterns',
+        ];
+        $configuration = [];
+
+        foreach ($keys as $key) {
+            $configuration[$key] = config('env-guard.'.$key);
+        }
+
+        return hash('sha256', serialize($configuration));
+    }
+
+    private function runtimePresenceFingerprint(): string
+    {
+        $keys = [];
+
+        foreach ($this->referencePaths() as $path) {
+            $scan = $this->environmentFiles->scan($path, true);
+
+            foreach ($scan['keys'] as $key => $meta) {
+                if (! $meta['commented']) {
+                    $keys[$key] = true;
+                }
+            }
+        }
+
+        ksort($keys);
+        $presence = [];
+
+        foreach (array_keys($keys) as $key) {
+            $presence[$key] = $this->runtimeHas($key);
+        }
+
+        return hash('sha256', serialize($presence));
     }
 
     /** @return array<string, mixed> */
@@ -663,7 +716,7 @@ final class EnvGuard
         }
 
         $payload = json_encode([
-            'version' => 1,
+            'version' => self::CACHE_VERSION,
             'fingerprint' => $fingerprint,
             'findings' => $findings,
         ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);

@@ -77,3 +77,31 @@ ENV);
 
     @unlink($path);
 });
+
+it('ignores interpolations in dotenv comments while preserving quoted content', function () {
+    $path = tempnam(sys_get_temp_dir(), 'env-guard-');
+    file_put_contents($path, <<<'ENV'
+BASE=value
+UNQUOTED=${BASE}#${UNQUOTED_COMMENT}
+SPACED=${BASE} # ${SPACED_COMMENT}
+QUOTED="${BASE} # ${INSIDE_QUOTE}" # ${QUOTED_COMMENT}
+MULTILINE="first ${BASE}
+second # ${INSIDE_MULTILINE}
+end" # ${CLOSING_COMMENT}
+SINGLE='${SINGLE_LITERAL}'
+ENV);
+
+    $result = (new EnvironmentFileScanner)->scan($path);
+    $keys = array_column($result['interpolations'], 'key');
+
+    expect($keys)->toBe(['BASE', 'BASE', 'BASE', 'INSIDE_QUOTE', 'BASE', 'INSIDE_MULTILINE'])
+        ->and($keys)->not->toContain(
+            'UNQUOTED_COMMENT',
+            'SPACED_COMMENT',
+            'QUOTED_COMMENT',
+            'CLOSING_COMMENT',
+            'SINGLE_LITERAL',
+        );
+
+    @unlink($path);
+});

@@ -58,7 +58,12 @@ final class EnvironmentFileScanner
 
                 if ($multilineQuote !== null) {
                     if (! $multilineCommented && $multilineQuote === '"') {
-                        $this->appendInterpolations($result['interpolations'], $continuation, $name, $lineNumber);
+                        $this->appendInterpolations(
+                            $result['interpolations'],
+                            $this->doubleQuotedInterpolationSource($continuation),
+                            $name,
+                            $lineNumber,
+                        );
                     }
 
                     if ($this->closesQuotedValue($continuation, $multilineQuote)) {
@@ -115,8 +120,13 @@ final class EnvironmentFileScanner
                 ];
             }
 
-            if (! $commented && ! str_starts_with($value, "'")) {
-                $this->appendInterpolations($result['interpolations'], $value, $name, $lineNumber);
+            if (! $commented) {
+                $this->appendInterpolations(
+                    $result['interpolations'],
+                    $this->interpolationSource($value),
+                    $name,
+                    $lineNumber,
+                );
             }
 
             if (($value[0] ?? null) !== null && in_array($value[0], ["'", '"'], true)) {
@@ -141,6 +151,45 @@ final class EnvironmentFileScanner
         }
 
         return $result;
+    }
+
+    private function interpolationSource(string $value): string
+    {
+        if (str_starts_with($value, "'")) {
+            return '';
+        }
+
+        if (str_starts_with($value, '"')) {
+            return $this->doubleQuotedInterpolationSource($value, 1);
+        }
+
+        $length = strcspn($value, "# \t\r\n\v\f");
+
+        return substr($value, 0, $length);
+    }
+
+    private function doubleQuotedInterpolationSource(string $value, int $start = 0): string
+    {
+        $escaped = false;
+        $length = strlen($value);
+
+        for ($index = $start; $index < $length; $index++) {
+            $character = $value[$index];
+
+            if ($character === '"' && ! $escaped) {
+                return substr($value, 0, $index + 1);
+            }
+
+            if ($character === '\\') {
+                $escaped = ! $escaped;
+
+                continue;
+            }
+
+            $escaped = false;
+        }
+
+        return $value;
     }
 
     /** @param list<array{key:string, line:int}> $target */

@@ -249,13 +249,13 @@ The package deliberately does not scan `vendor/`. Scanning every dependency woul
 
 The guard scans application-owned files only and ignores symlink targets. Files above the configured size limit are skipped.
 
-A metadata fingerprint is built from the scanned files. Sanitized findings are cached at:
+A fingerprint is built from scanned-file metadata, behavior-affecting guard configuration, and the presence (never the values) of documented runtime environment keys. Sanitized findings are cached at:
 
 ```text
 storage/framework/cache/laravel-env-guard.json
 ```
 
-When the metadata fingerprint is unchanged, source files are not reparsed. The cache contains key names, finding metadata, paths, and line numbers only. It never contains environment values.
+When that fingerprint is unchanged, source files are not reparsed. This also prevents stale cache reuse when an externally supplied environment key appears or disappears between application boots. The cache contains key names, finding metadata, paths, and line numbers only. It never contains environment values.
 
 Change the maximum scanned file size if necessary:
 
