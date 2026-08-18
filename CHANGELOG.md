@@ -4,11 +4,14 @@ All notable changes to Laravel Env Guard will be documented in this file.
 
 ## Unreleased
 
+## [1.2.0] - 2026-08-18
+
 ### Changed
 
 - Automatic full-project audits are console-first by default through `console_only`, avoiding a complete static scan on every normal HTTP request.
 - Every audit now reads and analyzes the current source/environment state directly; the persistent `laravel-env-guard.json` findings cache, metadata invalidation machinery, and `cache_path` configuration have been removed.
 - `EnvGuard::inspect()` retains the legacy `fresh` and `fingerprint` result fields for 1.x compatibility; `fresh` is always `true` and the fingerprint is an in-memory signature of the current sanitized findings only.
+- Upgrades from cache-based releases automatically remove the legacy default result cache and any previously configured custom `cache_path` on the next audit.
 
 ## [1.1.0] - 2026-08-18
 
@@ -63,5 +66,6 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Frontend scanning now distinguishes executable template expressions from comments, strings, regular-expression literals, and template text; it also covers direct environment destructuring.
 - PHPUnit `<server>` variables, UTF-8 BOM environment files, explicit extensionless text project files, binary-file skipping, malformed ignore patterns, and cross-platform path comparison are now covered.
 
+[1.2.0]: https://github.com/Codegenie-BE/laravel-env-guard/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Codegenie-BE/laravel-env-guard/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Codegenie-BE/laravel-env-guard/releases/tag/v1.0.0
