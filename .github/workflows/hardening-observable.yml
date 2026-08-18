@@ -30,6 +30,35 @@ jobs:
           composer require --dev "laravel/framework:^13.0" "orchestra/testbench:^11.0" --no-update --no-interaction
           composer update --prefer-dist --no-interaction --no-progress
 
+      - name: Normalize temporary patch escapes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          file = Path('.github/hardening.py')
+          text = file.read_text()
+          old = '''    count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"Expected {expected} match(es) in {path}, found {count}: {old!r}")
+              file.write_text(text.replace(old, new, expected))'''.replace('              ', '    ')
+          new = '''    count = text.count(old)
+              if count != expected:
+                  escaped_old = old.replace("\\", "\\\\")
+                  escaped_new = new.replace("\\", "\\\\")
+                  escaped_count = text.count(escaped_old)
+                  if escaped_count == expected:
+                      old = escaped_old
+                      new = escaped_new
+                      count = escaped_count
+              if count != expected:
+                  raise SystemExit(f"Expected {expected} match(es) in {path}, found {count}: {old!r}")
+              file.write_text(text.replace(old, new, expected))'''.replace('              ', '    ')
+
+          if old not in text:
+              raise SystemExit('Unable to locate temporary replace_once implementation')
+
+          file.write_text(text.replace(old, new, 1))
+
       - name: Apply reviewed hardening
         run: python .github/hardening.py
 
