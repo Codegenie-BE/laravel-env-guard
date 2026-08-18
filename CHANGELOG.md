@@ -18,7 +18,7 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Custom Laravel environment path/file support.
 - Metadata-only scan caching with no environment values or secrets persisted.
 - Laravel 12 and Laravel 13 compatibility matrix for PHP 8.2 through PHP 8.5 where supported by Laravel.
-- Token-based PHP environment access analysis that ignores comments and string literals, recognizes fully qualified `\env()` and aliased / fully qualified `Illuminate\Support\Env::get()`, and classifies concatenated keys as dynamic instead of literal.
+- Token-based PHP environment access analysis that ignores comments and string literals, recognizes fully qualified `\\env()` and aliased / fully qualified `Illuminate\\Support\\Env::get()`, and classifies concatenated keys as dynamic instead of literal.
 - Precise Vite `loadEnv()` tracking that follows the assigned environment object instead of matching unrelated `VITE_*` object properties.
 - Multiline dotenv parsing that ignores assignment-shaped content inside quoted values and still tracks valid `${KEY}` interpolation without retaining values.
 - Additional project-file coverage for `public/index.php` and `phpunit.xml.dist`, plus shell-style infrastructure defaults such as `${APP_NAME:-Laravel}`.
@@ -45,3 +45,4 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Metadata cache invalidation now tracks Laravel configuration-cache state and cache path so `configuration-cached` diagnostics cannot become stale across `config:cache` and `config:clear` transitions.
 - Filesystem regression coverage now verifies custom Laravel environment paths and filenames, configured maximum source size, and that symlinked source files are not followed.
 - The exact Composer release archive is now validated for required runtime files, excluded development-only files, strict manifest validity, and installation into a fresh Laravel 13 application.
+- Composer package metadata now uses a clearer public description and broader discovery keywords aligned with the package's Laravel, PHP, dotenv, config-cache, Vite and static-analysis scope.
