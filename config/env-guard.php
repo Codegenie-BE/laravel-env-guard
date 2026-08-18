@@ -21,6 +21,19 @@ return [
     'fail_on_error' => true,
 
     /*
+    | Show current findings on STDERR whenever a guarded Artisan command boots.
+    | Logging remains change-based so normal Laravel log files are not spammed.
+    */
+    'console_output' => true,
+
+    /*
+    | Laravel's stock config files define many optional connection, driver and
+    | service keys. Do not treat an absent stock optional key as a project
+    | requirement until the project declares or externally supplies that key.
+    */
+    'suppress_inactive_laravel_keys' => true,
+
+    /*
     | Files used to document or compare environment keys. Relative paths are
     | resolved against Laravel's environment path, not necessarily base_path().
     */
@@ -76,8 +89,10 @@ return [
 
     'max_file_size' => 1_048_576,
 
-    /* Keys consumed by Laravel itself rather than ordinary application code. */
+    /* Keys consumed by Laravel/framework tooling rather than app-owned source. */
     'known_external_keys' => [
+        'BCRYPT_ROUNDS',
+        'BROADCAST_CONNECTION',
         'LARAVEL_ENV_ENCRYPTION_KEY',
         'PHP_CLI_SERVER_WORKERS',
         'VITE_APP_NAME',
