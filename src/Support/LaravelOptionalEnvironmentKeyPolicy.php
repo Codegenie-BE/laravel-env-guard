@@ -22,9 +22,10 @@ final class LaravelOptionalEnvironmentKeyPolicy
         }
 
         $activeKeys = [];
+        $activePath = $this->app->environmentFilePath();
 
         foreach ($this->environmentPaths() as $path) {
-            $scan = $this->environmentFiles->scan($path);
+            $scan = $this->environmentFiles->scan($path, $path !== $activePath);
 
             foreach (array_keys($scan['keys']) as $key) {
                 $activeKeys[$key] = true;
@@ -54,12 +55,21 @@ final class LaravelOptionalEnvironmentKeyPolicy
             }
         }
 
-        $environmentPath = $this->app->environmentPath();
+        if ((bool) config('env-guard.discover_environment_files', true)) {
+            $environmentPath = $this->app->environmentPath();
 
-        if ((bool) config('env-guard.discover_environment_files', false) && is_dir($environmentPath)) {
-            foreach (glob(rtrim($environmentPath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'.env.*') ?: [] as $path) {
-                if (! $this->excludedEnvironmentFile(basename($path))) {
-                    $paths[] = $path;
+            if (is_dir($environmentPath)) {
+                $root = rtrim($environmentPath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+                $plainEnvironment = $root.'.env';
+
+                if (is_file($plainEnvironment) && ! $this->excludedEnvironmentFile(basename($plainEnvironment))) {
+                    $paths[] = $plainEnvironment;
+                }
+
+                foreach (glob($root.'.env.*') ?: [] as $path) {
+                    if (is_file($path) && ! $this->excludedEnvironmentFile(basename($path))) {
+                        $paths[] = $path;
+                    }
                 }
             }
         }
@@ -81,11 +91,11 @@ final class LaravelOptionalEnvironmentKeyPolicy
 
     private function excludedEnvironmentFile(string $name): bool
     {
-        if ($name === '.env.example' || str_ends_with($name, '.encrypted')) {
+        if (str_ends_with($name, '.encrypted')) {
             return true;
         }
 
-        foreach (['.bak', '.backup', '.old', '.dist'] as $suffix) {
+        foreach (['.bak', '.backup', '.old'] as $suffix) {
             if (str_ends_with($name, $suffix)) {
                 return true;
             }
