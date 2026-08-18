@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a focused improvement for a real Laravel environment-correctness problem.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Environment correctness problem
+      description: What real Laravel scenario cannot be handled safely or accurately with the current behavior?
+    validations:
+      required: true
+  - type: textarea
+    id: current_workaround
+    attributes:
+      label: Current workaround
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the user-visible result. Implementation suggestions are optional.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This concerns Laravel environment-variable correctness rather than general-purpose static analysis or secret management.
+          required: true

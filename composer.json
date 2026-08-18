@@ -22,6 +22,7 @@
     ],
     "support": {
         "issues": "https://github.com/Codegenie-BE/laravel-env-guard/issues",
+        "forum": "https://github.com/Codegenie-BE/laravel-env-guard/discussions",
         "source": "https://github.com/Codegenie-BE/laravel-env-guard"
     },
     "require": {
