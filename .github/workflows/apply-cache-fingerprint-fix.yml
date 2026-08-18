@@ -32,21 +32,23 @@ jobs:
           path = root / 'src' / 'EnvGuard.php'
           source = path.read_text(encoding='utf-8')
 
-          old = """        $parts[] = 'configuration|'.$this->behaviorConfigurationFingerprint();
-          $parts[] = 'runtime-presence|'.$this->runtimePresenceFingerprint();
-          """
-          new = """        $parts[] = 'configuration|'.$this->behaviorConfigurationFingerprint();
-          $parts[] = implode('|', [
-              'configuration-cache',
-              $this->app->configurationIsCached() ? 'cached' : 'uncached',
-              $this->normalizeComparablePath($this->app->getCachedConfigPath()),
-          ]);
-          $parts[] = 'runtime-presence|'.$this->runtimePresenceFingerprint();
-          """
+          old = (
+              "        $parts[] = 'configuration|'.$this->behaviorConfigurationFingerprint();\n"
+              "        $parts[] = 'runtime-presence|'.$this->runtimePresenceFingerprint();"
+          )
+          new = (
+              "        $parts[] = 'configuration|'.$this->behaviorConfigurationFingerprint();\n"
+              "        $parts[] = implode('|', [\n"
+              "            'configuration-cache',\n"
+              "            $this->app->configurationIsCached() ? 'cached' : 'uncached',\n"
+              "            $this->normalizeComparablePath($this->app->getCachedConfigPath()),\n"
+              "        ]);\n"
+              "        $parts[] = 'runtime-presence|'.$this->runtimePresenceFingerprint();"
+          )
 
           if new not in source:
-              if old not in source:
-                  raise SystemExit('Expected fingerprint insertion point was not found.')
+              if source.count(old) != 1:
+                  raise SystemExit(f'Expected one fingerprint insertion point, found {source.count(old)}.')
               path.write_text(source.replace(old, new, 1), encoding='utf-8', newline='\n')
 
           workflow = root / '.github' / 'workflows' / 'apply-cache-fingerprint-fix.yml'
