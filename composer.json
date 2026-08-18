@@ -1,17 +1,22 @@
 {
     "name": "codegenie-be/laravel-env-guard",
-    "description": "Automatically audit Laravel environment variables for missing, unused, duplicate, inconsistent and unsafe usage during development.",
+    "description": "Automatically audit Laravel environment variables for drift, missing keys and unsafe usage during development without storing secret values.",
     "type": "library",
     "license": "MIT",
     "keywords": [
         "laravel",
+        "php",
+        "laravel-package",
         "environment",
+        "environment-variables",
         "dotenv",
         "env",
         "configuration",
+        "config-cache",
         "guard",
         "static-analysis",
         "developer-tools",
+        "vite",
         "codegenie"
     ],
     "authors": [
