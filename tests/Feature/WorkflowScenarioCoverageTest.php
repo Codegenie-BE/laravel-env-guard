@@ -25,6 +25,10 @@ it('keeps the complete risk-based CI scenario model enforced', function (): void
         expect($workflow)->toContain($requirement);
     }
 
+    expect($workflow)
+        ->not->toMatch('/(?:laravel\/framework|orchestra\/testbench|pestphp\/pest):\^/')
+        ->not->toMatch('/(?:framework|testbench|pest):\s*[\'\"]\^/');
+
     preg_match_all('/^\s*uses:\s*([^\s#]+)/m', $workflow, $matches);
 
     expect($matches[1])->not->toBe([]);
@@ -40,7 +44,8 @@ it('keeps the complete risk-based CI scenario model enforced', function (): void
 it('keeps temporary source-mutation workflows out of the maintained branch', function (): void {
     $root = dirname(__DIR__, 2);
 
-    expect(is_file($root.'/.github/workflows/apply-cache-fingerprint-fix.yml'))->toBeFalse();
+    expect(is_file($root.'/.github/workflows/apply-cache-fingerprint-fix.yml'))->toBeFalse()
+        ->and(is_file($root.'/.github/workflows/apply-ci-portability-fix.yml'))->toBeFalse();
 
     foreach (array_merge(
         glob($root.'/.github/workflows/*.yml') ?: [],
@@ -48,6 +53,8 @@ it('keeps temporary source-mutation workflows out of the maintained branch', fun
     ) as $workflowPath) {
         $workflow = (string) file_get_contents($workflowPath);
 
-        expect($workflow)->not->toContain('Apply reviewed cache fingerprint fix');
+        expect($workflow)
+            ->not->toContain('Apply reviewed cache fingerprint fix')
+            ->not->toContain('Apply CI portability fix');
     }
 });
