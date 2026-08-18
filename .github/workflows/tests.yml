@@ -89,58 +89,70 @@ jobs:
         run: |
           from pathlib import Path
 
-          def replace_once(path, old, new):
+          def replace_exact(path, old, new, expected=1):
               file = Path(path)
               text = file.read_text()
               count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"Expected exactly one match in {path}, found {count}: {old!r}")
-              file.write_text(text.replace(old, new, 1))
+              if count != expected:
+                  raise SystemExit(f"Expected {expected} match(es) in {path}, found {count}: {old!r}")
+              file.write_text(text.replace(old, new))
 
-          replace_once(
+          replace_exact(
               "src/EnvGuard.php",
               "$first = $locations[0] ?? [];",
               "$first = $locations[0];",
           )
+          replace_exact(
+              "src/EnvGuard.php",
+              "$first['path'] ?? null",
+              "$first['path']",
+              expected=2,
+          )
+          replace_exact(
+              "src/EnvGuard.php",
+              "$first['line'] ?? null",
+              "$first['line']",
+              expected=2,
+          )
 
           for key in ("mtime", "ctime", "size", "ino"):
-              replace_once(
+              replace_exact(
                   "src/EnvGuard.php",
                   f"$stat['{key}'] ?? 0,",
                   f"$stat['{key}'],",
               )
 
-          replace_once(
+          replace_exact(
               "src/Scanners/EnvironmentFileScanner.php",
               "duplicates:list<array{key:string, lines:list<int>>>,",
               "duplicates:list<array{key:string, lines:list<int>}>,",
           )
 
-          replace_once(
+          replace_exact(
               "src/Scanners/PhpEnvironmentScanner.php",
               """            $tokens = token_get_all($contents);\n            $this->scanEnvHelpers($result, $tokens, $file, $inConfig);\n\n            $facade = $this->scanEnvFacade($tokens, $file, $inConfig);""",
               """            $tokens = token_get_all($contents);\n            $helpers = $this->scanEnvHelpers($tokens, $file, $inConfig);\n            $result['usages'] = array_merge($result['usages'], $helpers['usages']);\n            $result['dynamic'] = array_merge($result['dynamic'], $helpers['dynamic']);\n\n            $facade = $this->scanEnvFacade($tokens, $file, $inConfig);""",
           )
 
-          replace_once(
+          replace_exact(
               "src/Scanners/PhpEnvironmentScanner.php",
               """    /**\n     * @param  array{usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>, dynamic:list<array{path:string, line:int, in_config:bool, source:string}>, raw:list<array{key:string, path:string, line:int, source:string}>}  $result\n     * @param  array<int, array<int, mixed>|string>  $tokens\n     */\n    private function scanEnvHelpers(array &$result, array $tokens, string $file, bool $inConfig): void\n    {\n        foreach ($tokens as $index => $token) {""",
               """    /**\n     * @param  array<int, array<int, mixed>|string>  $tokens\n     * @return array{\n     *     usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>,\n     *     dynamic:list<array{path:string, line:int, in_config:bool, source:string}>\n     * }\n     */\n    private function scanEnvHelpers(array $tokens, string $file, bool $inConfig): array\n    {\n        $result = [\n            'usages' => [],\n            'dynamic' => [],\n        ];\n\n        foreach ($tokens as $index => $token) {""",
           )
 
-          replace_once(
+          replace_exact(
               "src/Scanners/PhpEnvironmentScanner.php",
               """            $this->recordEnvironmentCall($result, $tokens, $openIndex, $file, $token[2], $inConfig, 'env');\n        }\n    }\n\n    /**\n     * @param  array<int, array<int, mixed>|string>  $tokens""",
               """            $this->recordEnvironmentCall($result, $tokens, $openIndex, $file, $token[2], $inConfig, 'env');\n        }\n\n        return $result;\n    }\n\n    /**\n     * @param  array<int, array<int, mixed>|string>  $tokens""",
           )
 
-          replace_once(
+          replace_exact(
               "src/Scanners/PhpEnvironmentScanner.php",
               "/** @param array<int, array<int, mixed>|string> $tokens */\n    private function previousSignificant(array $tokens, int $index): array|string|null",
               "/**\n     * @param  array<int, array<int, mixed>|string>  $tokens\n     * @return array<int, mixed>|string|null\n     */\n    private function previousSignificant(array $tokens, int $index): array|string|null",
           )
 
-          replace_once(
+          replace_exact(
               "src/Scanners/PhpEnvironmentScanner.php",
               "    private function tokenIs(array|string $token, int $id): bool",
               "    /** @param array<int, mixed>|string $token */\n    private function tokenIs(array|string $token, int $id): bool",
