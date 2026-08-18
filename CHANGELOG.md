@@ -28,3 +28,6 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Lowercase/custom Vite key detection, direct `loadEnv()` destructuring, and common `.mjs` / `.cjs` / `.mts` / `.cts` Vite config variants.
 - Core Env Guard regression coverage for ignored keys, explicit comparisons, discovery behavior, caching, and secret-value non-persistence.
 - Deduplicated source roots before recursive scanning so the default `config` directory is not traversed twice.
+- Cache invalidation now includes behavior-affecting guard configuration and the presence of documented runtime environment keys without hashing or persisting secret values.
+- Dotenv interpolation tracking now follows `phpdotenv` comment boundaries so `${KEY}` references inside inline comments are ignored while quoted content remains valid.
+- The existing 80% test-coverage requirement is now enforced by the permanent GitHub Actions quality job.
