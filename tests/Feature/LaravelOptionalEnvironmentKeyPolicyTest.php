@@ -8,7 +8,7 @@ it('suppresses only absent Laravel optional keys and keeps declared optional key
     $root = sys_get_temp_dir().'/env-guard-optional-policy-'.bin2hex(random_bytes(5));
     mkdir($root, 0777, true);
 
-    file_put_contents($root.'/.env', "MAIL_URL=smtp://localhost\n");
+    file_put_contents($root.'/.env', "MAIL_URL=smtp://localhost\n# REDIS_URL=redis://commented\n");
     file_put_contents($root.'/.env.example', "APP_NAME=Laravel\n");
 
     $app = new Application($root);
