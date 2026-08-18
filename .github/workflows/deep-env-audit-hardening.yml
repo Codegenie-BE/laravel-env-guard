@@ -38,15 +38,103 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          path = Path('src/EnvGuard.php')
-          text = path.read_text()
+          guard = Path('src/EnvGuard.php')
+          text = guard.read_text()
           old = "                    $first['path'] ?? null,\n                    $first['line'] ?? null,"
           new = "                    $first['path'],\n                    $first['line'],"
 
           if text.count(old) != 1:
               raise SystemExit(f'Expected one typed finding location, found {text.count(old)}')
 
-          path.write_text(text.replace(old, new, 1))
+          guard.write_text(text.replace(old, new, 1))
+
+          scanner = Path('src/Scanners/TextEnvironmentScanner.php')
+          text = scanner.read_text()
+          old = r'''        if ($this->isInfrastructureFile($file) && ! $this->isJavaScriptFile($file)) {
+              $contents = $this->maskPattern(
+                  $contents,
+                  '~([\'\"])(?:\\.|(?!\1).)*\1(*SKIP)(*F)|\#[^\r\n]*~',
+              );
+          }
+          '''
+          new = '''        if ($this->isInfrastructureFile($file) && ! $this->isJavaScriptFile($file)) {
+              $contents = $this->maskInfrastructureComments($contents);
+          }
+          '''
+
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one infrastructure comment block, found {text.count(old)}')
+
+          text = text.replace(old, new, 1)
+          marker = '''    private function maskPattern(string $contents, string $pattern): string
+          '''
+          method = r'''    private function maskInfrastructureComments(string $contents): string
+          {
+              $masked = $contents;
+              $quote = null;
+              $length = strlen($contents);
+
+              for ($index = 0; $index < $length; $index++) {
+                  $character = $contents[$index];
+
+                  if ($quote !== null) {
+                      if ($character === '\\' && $quote === '"' && $index + 1 < $length) {
+                          $index++;
+
+                          continue;
+                      }
+
+                      if ($character === $quote) {
+                          $quote = null;
+                      }
+
+                      continue;
+                  }
+
+                  if ($character === "'" || $character === '"') {
+                      $quote = $character;
+
+                      continue;
+                  }
+
+                  if ($character !== '#') {
+                      continue;
+                  }
+
+                  while ($index < $length && $contents[$index] !== "\n" && $contents[$index] !== "\r") {
+                      $this->maskByte($masked, $index);
+                      $index++;
+                  }
+
+                  $index--;
+              }
+
+              return $masked;
+          }
+
+          '''
+
+          if text.count(marker) != 1:
+              raise SystemExit(f'Expected one maskPattern marker, found {text.count(marker)}')
+
+          scanner.write_text(text.replace(marker, method + marker, 1))
+
+          test = Path('tests/Unit/TextEnvironmentScannerTest.php')
+          text = test.read_text()
+          old = "    $path = tempnam(sys_get_temp_dir(), 'phpunit-');\n    file_put_contents($path, <<<'XML'\n"
+          new = "    $root = sys_get_temp_dir().'/env-guard-phpunit-'.bin2hex(random_bytes(4));\n    mkdir($root, 0777, true);\n    $path = $root.'/phpunit.xml';\n    file_put_contents($path, <<<'XML'\n"
+
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one PHPUnit temporary path, found {text.count(old)}')
+
+          text = text.replace(old, new, 1)
+          old = "    expect($result['phpunit_keys'])->toBe(['REAL_ENV', 'REAL_SERVER']);\n\n    @unlink($path);\n});\n"
+          new = "    expect($result['phpunit_keys'])->toBe(['REAL_ENV', 'REAL_SERVER']);\n\n    @unlink($path);\n    @rmdir($root);\n});\n"
+
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected one PHPUnit cleanup block, found {text.count(old)}')
+
+          test.write_text(text.replace(old, new, 1))
           PY
 
       - name: Setup PHP
