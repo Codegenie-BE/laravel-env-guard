@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   compatibility:
@@ -66,8 +66,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref }}
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -84,92 +82,8 @@ jobs:
       - name: Audit dependencies
         run: composer audit --no-interaction
 
-      - name: Apply proven Larastan fixes
-        shell: python
-        run: |
-          from pathlib import Path
-
-          def replace_exact(path, old, new, expected=1):
-              file = Path(path)
-              text = file.read_text()
-              count = text.count(old)
-              if count != expected:
-                  raise SystemExit(f"Expected {expected} match(es) in {path}, found {count}: {old!r}")
-              file.write_text(text.replace(old, new))
-
-          replace_exact(
-              "src/EnvGuard.php",
-              "$first = $locations[0] ?? [];",
-              "$first = $locations[0];",
-          )
-          replace_exact(
-              "src/EnvGuard.php",
-              "$first['path'] ?? null",
-              "$first['path']",
-              expected=2,
-          )
-          replace_exact(
-              "src/EnvGuard.php",
-              "$first['line'] ?? null",
-              "$first['line']",
-              expected=2,
-          )
-
-          for key in ("mtime", "ctime", "size", "ino"):
-              replace_exact(
-                  "src/EnvGuard.php",
-                  f"$stat['{key}'] ?? 0,",
-                  f"$stat['{key}'],",
-              )
-
-          replace_exact(
-              "src/Scanners/EnvironmentFileScanner.php",
-              "duplicates:list<array{key:string, lines:list<int>>>,",
-              "duplicates:list<array{key:string, lines:list<int>}>,",
-          )
-
-          replace_exact(
-              "src/Scanners/PhpEnvironmentScanner.php",
-              """            $tokens = token_get_all($contents);\n            $this->scanEnvHelpers($result, $tokens, $file, $inConfig);\n\n            $facade = $this->scanEnvFacade($tokens, $file, $inConfig);""",
-              """            $tokens = token_get_all($contents);\n            $helpers = $this->scanEnvHelpers($tokens, $file, $inConfig);\n            $result['usages'] = array_merge($result['usages'], $helpers['usages']);\n            $result['dynamic'] = array_merge($result['dynamic'], $helpers['dynamic']);\n\n            $facade = $this->scanEnvFacade($tokens, $file, $inConfig);""",
-          )
-
-          replace_exact(
-              "src/Scanners/PhpEnvironmentScanner.php",
-              """    /**\n     * @param  array{usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>, dynamic:list<array{path:string, line:int, in_config:bool, source:string}>, raw:list<array{key:string, path:string, line:int, source:string}>}  $result\n     * @param  array<int, array<int, mixed>|string>  $tokens\n     */\n    private function scanEnvHelpers(array &$result, array $tokens, string $file, bool $inConfig): void\n    {\n        foreach ($tokens as $index => $token) {""",
-              """    /**\n     * @param  array<int, array<int, mixed>|string>  $tokens\n     * @return array{\n     *     usages:list<array{key:string, path:string, line:int, in_config:bool, source:string}>,\n     *     dynamic:list<array{path:string, line:int, in_config:bool, source:string}>\n     * }\n     */\n    private function scanEnvHelpers(array $tokens, string $file, bool $inConfig): array\n    {\n        $result = [\n            'usages' => [],\n            'dynamic' => [],\n        ];\n\n        foreach ($tokens as $index => $token) {""",
-          )
-
-          replace_exact(
-              "src/Scanners/PhpEnvironmentScanner.php",
-              """            $this->recordEnvironmentCall($result, $tokens, $openIndex, $file, $token[2], $inConfig, 'env');\n        }\n    }\n\n    /**\n     * @param  array<int, array<int, mixed>|string>  $tokens""",
-              """            $this->recordEnvironmentCall($result, $tokens, $openIndex, $file, $token[2], $inConfig, 'env');\n        }\n\n        return $result;\n    }\n\n    /**\n     * @param  array<int, array<int, mixed>|string>  $tokens""",
-          )
-
-          replace_exact(
-              "src/Scanners/PhpEnvironmentScanner.php",
-              "/** @param array<int, array<int, mixed>|string> $tokens */\n    private function previousSignificant(array $tokens, int $index): array|string|null",
-              "/**\n     * @param  array<int, array<int, mixed>|string>  $tokens\n     * @return array<int, mixed>|string|null\n     */\n    private function previousSignificant(array $tokens, int $index): array|string|null",
-          )
-
-          replace_exact(
-              "src/Scanners/PhpEnvironmentScanner.php",
-              "    private function tokenIs(array|string $token, int $id): bool",
-              "    /** @param array<int, mixed>|string $token */\n    private function tokenIs(array|string $token, int $id): bool",
-          )
-
-      - name: Apply formatting
-        run: composer format
+      - name: Check formatting
+        run: composer format:test
 
       - name: Static analysis
         run: composer analyse
-
-      - name: Commit Larastan fixes
-        run: |
-          if ! git diff --quiet -- src; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src
-            git commit -m "Fix Larastan type issues"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
