@@ -11,7 +11,11 @@ it('suppresses only absent Laravel optional keys and keeps active optional keys 
     file_put_contents($root.'/.env', "MAIL_URL=smtp://localhost\n# REDIS_URL=redis://commented\n");
     file_put_contents($root.'/.env.example', "APP_NAME=Laravel\n# DB_HOST=127.0.0.1\n");
 
-    $app = new Application($root);
+    /** @var Application $app */
+    $app = $this->app;
+    $originalEnvironmentPath = $app->environmentPath();
+    $originalEnvironmentFile = basename($app->environmentFilePath());
+
     $app->useEnvironmentPath($root);
     $app->loadEnvironmentFrom('.env');
 
@@ -30,6 +34,8 @@ it('suppresses only absent Laravel optional keys and keeps active optional keys 
             ->toContain('REDIS_URL', 'DB_HOST', 'DB_QUEUE_CONNECTION', 'SESSION_CONNECTION')
             ->not->toContain('MAIL_URL');
     } finally {
+        $app->useEnvironmentPath($originalEnvironmentPath);
+        $app->loadEnvironmentFrom($originalEnvironmentFile);
         @unlink($root.'/.env');
         @unlink($root.'/.env.example');
         @rmdir($root);
