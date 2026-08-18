@@ -11,7 +11,13 @@ use Illuminate\Foundation\Application;
 
 function configurationCacheGuard(string $root): array
 {
-    $app = new Application($root);
+    $app = new class($root) extends Application
+    {
+        public function getCachedConfigPath()
+        {
+            return $this->bootstrapPath('cache/config.php');
+        }
+    };
     $app->instance('config', new Repository);
     $app->useEnvironmentPath($root);
     $app->loadEnvironmentFrom('.env');
@@ -55,15 +61,22 @@ it('invalidates cached findings when Laravel configuration cache state changes',
     [$app, $guard] = configurationCacheGuard($root);
 
     try {
+        expect($app->configurationIsCached())->toBeFalse();
+
         $uncached = $guard->inspect();
         $cachedConfigPath = $app->getCachedConfigPath();
-        file_put_contents($cachedConfigPath, '<?php return [];');
-        clearstatcache();
+        $bytesWritten = file_put_contents($cachedConfigPath, '<?php return [];');
+        clearstatcache(true, $cachedConfigPath);
+
+        expect($bytesWritten)->not->toBeFalse()
+            ->and($app->configurationIsCached())->toBeTrue();
 
         $cached = $guard->inspect();
 
-        @unlink($cachedConfigPath);
-        clearstatcache();
+        expect(@unlink($cachedConfigPath))->toBeTrue();
+        clearstatcache(true, $cachedConfigPath);
+
+        expect($app->configurationIsCached())->toBeFalse();
 
         $cleared = $guard->inspect();
 
