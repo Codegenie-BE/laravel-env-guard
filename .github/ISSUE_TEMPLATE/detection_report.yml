@@ -1,0 +1,63 @@
+name: Detection report
+description: Report a false positive, false negative or environment-detection edge case.
+title: "[Detection]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use placeholder environment values only. Never post real `.env` values, tokens, credentials, private URLs or customer data.
+  - type: dropdown
+    id: detection_type
+    attributes:
+      label: Detection type
+      options:
+        - False positive
+        - False negative
+        - Incorrect severity
+        - Incorrect source location
+        - Other detection edge case
+    validations:
+      required: true
+  - type: input
+    id: package_version
+    attributes:
+      label: Package version
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: PHP and Laravel versions
+      placeholder: PHP 8.5 / Laravel 13.x
+    validations:
+      required: true
+  - type: textarea
+    id: safe_example
+    attributes:
+      label: Minimal safe example
+      description: Include only the smallest relevant key names and source snippets, using fake values where a value is unavoidable.
+    validations:
+      required: true
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding produced or missing
+      description: Include the finding code/message and safe file/line context if available.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected detection behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I verified that this report contains no real environment values or other secrets.
+          required: true
