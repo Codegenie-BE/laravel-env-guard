@@ -43,8 +43,9 @@ jobs:
               file.write_text(text.replace(old, new, expected))'''.replace('              ', '    ')
           new = '''    count = text.count(old)
               if count != expected:
-                  escaped_old = old.replace("\\", "\\\\")
-                  escaped_new = new.replace("\\", "\\\\")
+                  slash = chr(92)
+                  escaped_old = old.replace(slash, slash * 2)
+                  escaped_new = new.replace(slash, slash * 2)
                   escaped_count = text.count(escaped_old)
                   if escaped_count == expected:
                       old = escaped_old
