@@ -21,23 +21,19 @@ final class LaravelOptionalEnvironmentKeyPolicy
             return [];
         }
 
-        $declared = [];
-        $referencePaths = $this->referencePaths();
+        $activeKeys = [];
 
         foreach ($this->environmentPaths() as $path) {
-            $scan = $this->environmentFiles->scan(
-                $path,
-                in_array($path, $referencePaths, true),
-            );
+            $scan = $this->environmentFiles->scan($path);
 
             foreach (array_keys($scan['keys']) as $key) {
-                $declared[$key] = true;
+                $activeKeys[$key] = true;
             }
         }
 
         $inactive = array_values(array_filter(
             LaravelOptionalEnvironmentKeys::all(),
-            fn (string $key): bool => ! isset($declared[$key]) && ! $this->runtimeHas($key),
+            fn (string $key): bool => ! isset($activeKeys[$key]) && ! $this->runtimeHas($key),
         ));
 
         sort($inactive);
@@ -48,14 +44,13 @@ final class LaravelOptionalEnvironmentKeyPolicy
     /** @return list<string> */
     private function environmentPaths(): array
     {
-        $paths = [
-            $this->app->environmentFilePath(),
-            ...$this->referencePaths(),
-        ];
+        $paths = [$this->app->environmentFilePath()];
 
-        foreach ((array) config('env-guard.compare_files', []) as $file) {
-            if (is_string($file) && $file !== '') {
-                $paths[] = $this->resolveEnvironmentPath($file);
+        foreach (['reference_files', 'compare_files'] as $configKey) {
+            foreach ((array) config('env-guard.'.$configKey, []) as $file) {
+                if (is_string($file) && $file !== '') {
+                    $paths[] = $this->resolveEnvironmentPath($file);
+                }
             }
         }
 
@@ -73,20 +68,6 @@ final class LaravelOptionalEnvironmentKeyPolicy
         sort($paths);
 
         return $paths;
-    }
-
-    /** @return list<string> */
-    private function referencePaths(): array
-    {
-        $paths = [];
-
-        foreach ((array) config('env-guard.reference_files', ['.env.example']) as $file) {
-            if (is_string($file) && $file !== '') {
-                $paths[] = $this->resolveEnvironmentPath($file);
-            }
-        }
-
-        return array_values(array_unique($paths));
     }
 
     private function resolveEnvironmentPath(string $path): string
