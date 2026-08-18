@@ -23,23 +23,24 @@ final class EnvGuard
     ) {}
 
     /**
- * Inspect the current project state from disk.
- *
- * The legacy fresh/fingerprint fields remain for 1.x API compatibility,
- * but no persistent result cache is read or written.
- *
- * @return array{findings:list<array<string, mixed>>, fresh:bool, fingerprint:string}
- */
-public function inspect(): array
-{
-    $findings = $this->scan($this->collectSourceFiles(), $this->environmentPaths());
+     * Inspect the current project state from disk.
+     *
+     * The legacy fresh/fingerprint fields remain for 1.x API compatibility,
+     * but no persistent result cache is read or written.
+     *
+     * @return array{findings:list<array<string, mixed>>, fresh:bool, fingerprint:string}
+     */
+    public function inspect(): array
+    {
+        $this->removeLegacyResultCache();
+        $findings = $this->scan($this->collectSourceFiles(), $this->environmentPaths());
 
-    return [
-        'findings' => $findings,
-        'fresh' => true,
-        'fingerprint' => hash('sha256', serialize($findings)),
-    ];
-}
+        return [
+            'findings' => $findings,
+            'fresh' => true,
+            'fingerprint' => hash('sha256', serialize($findings)),
+        ];
+    }
 
     /**
      * @param  list<string>  $sourceFiles
@@ -691,6 +692,26 @@ public function inspect(): array
         return str_starts_with($path, '/')
             || str_starts_with($path, '\\')
             || preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1;
+    }
+
+    private function removeLegacyResultCache(): void
+    {
+        $paths = [
+            $this->app->storagePath('framework/cache/laravel-env-guard.json'),
+        ];
+        $configured = config('env-guard.cache_path');
+
+        if (is_string($configured) && $configured !== '') {
+            $paths[] = $this->isAbsolutePath($configured)
+                ? $configured
+                : $this->app->basePath($configured);
+        }
+
+        foreach (array_unique($paths) as $path) {
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
     }
 
     private function runtimeHas(string $key): bool
