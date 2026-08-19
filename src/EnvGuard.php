@@ -79,22 +79,32 @@ final class EnvGuard
         }
 
         foreach ($environmentPaths as $path) {
-            $environmentScans[$path] = $this->environmentFiles->scan(
-                $path,
-                in_array($path, $referencePaths, true),
-            );
+            // Parse commented assignments for every discovered environment file so
+            // renamed templates retain their key inventory without relying on a
+            // special ".env.example" filename. Commented assignments never count
+            // as active values in Laravel's currently active environment file.
+            $environmentScans[$path] = $this->environmentFiles->scan($path, true);
         }
 
         $declared = [];
+        $activeDeclared = [];
 
         foreach ($environmentScans as $scan) {
             foreach ($scan['keys'] as $key => $meta) {
+                if ($meta['commented'] && $scan['path'] === $activePath) {
+                    continue;
+                }
+
                 $declared[$key] ??= [];
                 $declared[$key][] = [
                     'path' => $scan['path'],
                     'line' => $meta['line'],
                     'commented' => $meta['commented'],
                 ];
+
+                if (! $meta['commented']) {
+                    $activeDeclared[$key] = true;
+                }
             }
 
             foreach ($scan['duplicates'] as $duplicate) {
@@ -270,7 +280,7 @@ final class EnvGuard
                     'warning',
                     'missing-reference-file',
                     null,
-                    sprintf('Reference environment file %s does not exist.', basename($scan['path'])),
+                    sprintf('Explicitly configured reference environment file %s does not exist.', basename($scan['path'])),
                     $scan['path'],
                     null,
                 );
@@ -303,7 +313,7 @@ final class EnvGuard
 
         if ($existingReferenceScans !== [] && is_array($activeScan) && $activeScan['exists']) {
             foreach ($activeScan['keys'] as $key => $meta) {
-                if ($this->isIgnored($key) || isset($documentedKeys[$key])) {
+                if ($meta['commented'] || $this->isIgnored($key) || isset($documentedKeys[$key])) {
                     continue;
                 }
 
@@ -324,7 +334,9 @@ final class EnvGuard
                     continue;
                 }
 
-                if (is_array($activeScan) && $activeScan['exists'] && isset($activeScan['keys'][$key])) {
+                $activeMeta = is_array($activeScan) ? ($activeScan['keys'][$key] ?? null) : null;
+
+                if (is_array($activeMeta) && ! $activeMeta['commented']) {
                     continue;
                 }
 
@@ -351,7 +363,11 @@ final class EnvGuard
             }
 
             foreach ($scan['keys'] as $key => $meta) {
-                if ($meta['commented'] || isset($activeScan['keys'][$key]) || $this->runtimeHas($key)) {
+                $activeMeta = $activeScan['keys'][$key] ?? null;
+
+                if ($meta['commented']
+                    || (is_array($activeMeta) && ! $activeMeta['commented'])
+                    || $this->runtimeHas($key)) {
                     continue;
                 }
 
@@ -367,7 +383,20 @@ final class EnvGuard
         }
 
         $phpUnitKeys = array_fill_keys($textScan['phpunit_keys'], true);
-        $comparisonPaths = array_values(array_diff($this->comparisonPaths(), [$activePath], $referencePaths));
+
+        // Default mode is name-agnostic peer comparison: every discovered
+        // plaintext .env / .env.* file participates. Projects that explicitly
+        // configure reference_files keep the previous reference-vs-active
+        // semantics and only compare files explicitly listed in compare_files.
+        $comparisonPaths = $referencePaths === []
+            ? array_values(array_unique([
+                $activePath,
+                ...$this->comparisonPaths(),
+                ...$this->discoveredEnvironmentPaths(),
+            ]))
+            : array_values(array_diff($this->comparisonPaths(), [$activePath], $referencePaths));
+
+        sort($comparisonPaths);
 
         foreach ($comparisonPaths as $path) {
             $scan = $environmentScans[$path] ?? null;
@@ -376,12 +405,18 @@ final class EnvGuard
                 continue;
             }
 
-            foreach (array_keys($projectKeys) as $key) {
-                if (isset($scan['keys'][$key])) {
+            foreach (array_keys($activeDeclared) as $key) {
+                $meta = $scan['keys'][$key] ?? null;
+
+                if (is_array($meta) && ($path !== $activePath || ! $meta['commented'])) {
                     continue;
                 }
 
                 if (basename($path) === '.env.testing' && isset($phpUnitKeys[$key])) {
+                    continue;
+                }
+
+                if ($path === $activePath && $this->runtimeHas($key)) {
                     continue;
                 }
 
@@ -393,7 +428,7 @@ final class EnvGuard
                     'warning',
                     'missing-from-environment-file',
                     $key,
-                    sprintf('Environment key %s is used by the project but missing from %s.', $key, basename($path)),
+                    sprintf('Environment key %s is present in another scanned environment file but missing from %s.', $key, basename($path)),
                     $path,
                     null,
                 );
@@ -609,20 +644,8 @@ final class EnvGuard
             $this->app->environmentFilePath(),
             ...$this->referencePaths(),
             ...$this->comparisonPaths(),
+            ...$this->discoveredEnvironmentPaths(),
         ];
-        $environmentPath = $this->app->environmentPath();
-
-        if ((bool) config('env-guard.discover_environment_files', false) && is_dir($environmentPath)) {
-            foreach (glob(rtrim($environmentPath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'.env.*') ?: [] as $path) {
-                $name = basename($path);
-
-                if ($this->excludedEnvironmentFile($name)) {
-                    continue;
-                }
-
-                $paths[] = $path;
-            }
-        }
 
         $paths = array_values(array_unique($paths));
         sort($paths);
@@ -645,11 +668,46 @@ final class EnvGuard
     }
 
     /** @return list<string> */
+    private function discoveredEnvironmentPaths(): array
+    {
+        if (! (bool) config('env-guard.discover_environment_files', true)) {
+            return [];
+        }
+
+        $environmentPath = $this->app->environmentPath();
+
+        if (! is_dir($environmentPath)) {
+            return [];
+        }
+
+        $root = rtrim($environmentPath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        $paths = [];
+        $plainEnvironment = $root.'.env';
+
+        if (is_file($plainEnvironment) && ! $this->excludedEnvironmentFile(basename($plainEnvironment))) {
+            $paths[] = $plainEnvironment;
+        }
+
+        foreach (glob($root.'.env.*') ?: [] as $path) {
+            if (! is_file($path) || $this->excludedEnvironmentFile(basename($path))) {
+                continue;
+            }
+
+            $paths[] = $path;
+        }
+
+        $paths = array_values(array_unique($paths));
+        sort($paths);
+
+        return $paths;
+    }
+
+    /** @return list<string> */
     private function referencePaths(): array
     {
         $paths = [];
 
-        foreach ((array) config('env-guard.reference_files', ['.env.example']) as $file) {
+        foreach ((array) config('env-guard.reference_files', []) as $file) {
             if (is_string($file) && $file !== '') {
                 $paths[] = $this->resolveEnvironmentPath($file);
             }
@@ -660,11 +718,11 @@ final class EnvGuard
 
     private function excludedEnvironmentFile(string $name): bool
     {
-        if ($name === '.env.example' || str_ends_with($name, '.encrypted')) {
+        if (str_ends_with($name, '.encrypted')) {
             return true;
         }
 
-        foreach (['.bak', '.backup', '.old', '.dist'] as $suffix) {
+        foreach (['.bak', '.backup', '.old'] as $suffix) {
             if (str_ends_with($name, $suffix)) {
                 return true;
             }

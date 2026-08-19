@@ -205,9 +205,9 @@ try {
     $optional = runE2eCommand([PHP_BINARY, 'artisan', 'list', '--no-ansi'], $applicationRoot);
 
     if (! str_contains($optional['output'], 'Laravel Env Guard:')
-        || ! str_contains($optional['output'], 'missing-from-example')
+        || ! str_contains($optional['output'], 'missing-from-environment-file')
         || ! str_contains($optional['output'], 'LOG_DAILY_DAYS')) {
-        throw new RuntimeException('An actively supplied optional Laravel key was not reported in Artisan output.');
+        throw new RuntimeException('An actively supplied optional Laravel key was not reported as environment-file drift in Artisan output.');
     }
 
     $logs = laravelLogContents($applicationRoot);

@@ -40,23 +40,27 @@ return [
     'suppress_inactive_laravel_keys' => true,
 
     /*
-    | Files used to document or compare environment keys. Relative paths are
-    | resolved against Laravel's environment path, not necessarily base_path().
+    | Environment files are discovered by filename pattern, not by one required
+    | canonical name. By default every plaintext .env / .env.* file in Laravel's
+    | configured environment directory is scanned and compared by key inventory.
+    |
+    | Set reference_files only when a project intentionally wants one or more
+    | explicit documentation/reference files. A missing explicitly configured
+    | reference is reported; no reference filename is required by default.
+    |
+    | compare_files can add explicit standalone files, including paths outside
+    | automatic discovery. Relative paths resolve against environmentPath().
     */
-    'reference_files' => [
-        '.env.example',
-    ],
+    'reference_files' => [],
 
-    'compare_files' => [
-        '.env.testing',
-    ],
+    'compare_files' => [],
 
-    'discover_environment_files' => false,
+    'discover_environment_files' => true,
 
     /*
     | Application-owned source paths. Vendor and node_modules are deliberately
     | excluded: package internals should not force every optional vendor key
-    | into the application's .env.example file.
+    | into the application's environment files.
     */
     'scan_paths' => [
         'app',
