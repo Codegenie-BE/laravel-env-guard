@@ -4,6 +4,12 @@ All notable changes to Laravel Env Guard will be documented in this file.
 
 ## Unreleased
 
+## [1.2.2] - 2026-08-29
+
+### Fixed
+
+- PHP source scanning now follows aliased global helper imports such as `use function env as environment;`, so literal and dynamic environment access cannot bypass the existing `env()` diagnostics through a function alias.
+
 ## [1.2.1] - 2026-08-19
 
 ### Changed
@@ -75,6 +81,7 @@ All notable changes to Laravel Env Guard will be documented in this file.
 - Frontend scanning now distinguishes executable template expressions from comments, strings, regular-expression literals, and template text; it also covers direct environment destructuring.
 - PHPUnit `<server>` variables, UTF-8 BOM environment files, explicit extensionless text project files, binary-file skipping, malformed ignore patterns, and cross-platform path comparison are now covered.
 
+[1.2.2]: https://github.com/Codegenie-BE/laravel-env-guard/compare/v1.2.1...v1.2.2
 [1.2.1]: https://github.com/Codegenie-BE/laravel-env-guard/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Codegenie-BE/laravel-env-guard/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Codegenie-BE/laravel-env-guard/compare/v1.0.0...v1.1.0

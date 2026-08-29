@@ -133,3 +133,52 @@ PHPFILE);
         ->and($result['dynamic'][0]['source'])->toBe('env')
         ->and(array_column($result['raw'], 'key'))->toContain('NAMED_GETENV');
 });
+
+it('detects imported global env helper aliases only in function call contexts', function () {
+    file_put_contents($this->root.'/app/Example.php', <<<'PHPFILE'
+<?php
+namespace App;
+
+use function env/* keep token separation */as environment;
+use function strlen as string_length;
+
+$literal = environment('ALIASED_ENV');
+$dynamic = environment($name);
+$constructor = new environment('NOT_AN_ENV_CALL');
+$unrelated = string_length('value');
+PHPFILE);
+
+    $result = (new PhpEnvironmentScanner)->scan([
+        $this->root.'/app/Example.php',
+    ], $this->root.'/config');
+
+    expect(array_column($result['usages'], 'key'))->toBe(['ALIASED_ENV'])
+        ->and($result['usages'][0]['source'])->toBe('env')
+        ->and($result['usages'][0]['in_config'])->toBeFalse()
+        ->and($result['dynamic'])->toHaveCount(1)
+        ->and($result['dynamic'][0]['source'])->toBe('env')
+        ->and($result['raw'])->toBe([]);
+});
+
+it('keeps imported env helper aliases within their namespace block', function () {
+    file_put_contents($this->root.'/app/Example.php', <<<'PHPFILE'
+<?php
+namespace First {
+    use function env as environment;
+
+    $first = environment('FIRST_NAMESPACE');
+}
+
+namespace Second {
+    $second = environment('UNRELATED_NAMESPACE_FUNCTION');
+}
+PHPFILE);
+
+    $result = (new PhpEnvironmentScanner)->scan([
+        $this->root.'/app/Example.php',
+    ], $this->root.'/config');
+
+    expect(array_column($result['usages'], 'key'))->toBe(['FIRST_NAMESPACE'])
+        ->and($result['dynamic'])->toBe([])
+        ->and($result['raw'])->toBe([]);
+});
