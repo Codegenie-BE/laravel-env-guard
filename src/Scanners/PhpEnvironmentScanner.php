@@ -59,16 +59,18 @@ final class PhpEnvironmentScanner
             'usages' => [],
             'dynamic' => [],
         ];
-        $aliases = $this->envHelperAliases($tokens);
+        $scopeIds = $this->namespaceScopeIds($tokens);
+        $aliases = $this->envHelperAliases($tokens, $scopeIds);
 
         foreach ($tokens as $index => $token) {
             if (! is_array($token)) {
                 continue;
             }
 
+            $scopeAliases = $aliases[$scopeIds[$index] ?? 0] ?? [];
             $isEnvHelper = ($token[0] === T_STRING && strtolower($token[1]) === 'env')
                 || ($token[0] === T_NAME_FULLY_QUALIFIED && strtolower($token[1]) === '\\env')
-                || ($token[0] === T_STRING && isset($aliases[strtolower($token[1])]));
+                || ($token[0] === T_STRING && isset($scopeAliases[strtolower($token[1])]));
 
             if (! $isEnvHelper) {
                 continue;
@@ -76,7 +78,11 @@ final class PhpEnvironmentScanner
 
             $previous = $this->previousSignificant($tokens, $index);
 
-            if ($token[0] === T_STRING && is_array($previous) && in_array($previous[0], [T_FUNCTION, T_OBJECT_OPERATOR, T_DOUBLE_COLON], true)) {
+            if (
+                $token[0] === T_STRING
+                && is_array($previous)
+                && in_array($previous[0], [T_FUNCTION, T_NEW, T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR, T_DOUBLE_COLON], true)
+            ) {
                 continue;
             }
 
@@ -94,9 +100,10 @@ final class PhpEnvironmentScanner
 
     /**
      * @param  array<int, array<int, mixed>|string>  $tokens
-     * @return array<string, true>
+     * @param  array<int, int>  $scopeIds
+     * @return array<int, array<string, true>>
      */
-    private function envHelperAliases(array $tokens): array
+    private function envHelperAliases(array $tokens, array $scopeIds): array
     {
         $aliases = [];
         $count = count($tokens);
@@ -130,14 +137,19 @@ final class PhpEnvironmentScanner
                 $token = $tokens[$position];
 
                 if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                    $statement .= ' ';
+
                     continue;
                 }
 
                 $statement .= is_array($token) ? $token[1] : $token;
             }
 
+            $scope = $scopeIds[$index] ?? 0;
+            $aliases[$scope] ??= [];
+
             foreach ($this->splitTopLevel($statement, ',') as $import) {
-                $this->collectEnvHelperImportAlias($aliases, $import);
+                $this->collectEnvHelperImportAlias($aliases[$scope], $import);
             }
 
             $index = $end;
@@ -159,6 +171,72 @@ final class PhpEnvironmentScanner
 
         $alias = $matches[2] ?? 'env';
         $aliases[strtolower($alias)] = true;
+    }
+
+    /**
+     * Assign a unique lexical scope to each namespace block or unbracketed namespace section.
+     *
+     * @param  array<int, array<int, mixed>|string>  $tokens
+     * @return array<int, int>
+     */
+    private function namespaceScopeIds(array $tokens): array
+    {
+        $scopeIds = array_fill(0, count($tokens), 0);
+        $scope = 0;
+        $count = count($tokens);
+
+        for ($index = 0; $index < $count; $index++) {
+            if (! $this->tokenIs($tokens[$index], T_NAMESPACE)) {
+                continue;
+            }
+
+            $delimiter = null;
+
+            for ($position = $index + 1; $position < $count; $position++) {
+                if ($tokens[$position] === ';' || $tokens[$position] === '{') {
+                    $delimiter = $position;
+                    break;
+                }
+            }
+
+            if ($delimiter === null) {
+                continue;
+            }
+
+            $scope++;
+            $start = $delimiter + 1;
+            $end = $count - 1;
+
+            if ($tokens[$delimiter] === ';') {
+                for ($position = $start; $position < $count; $position++) {
+                    if ($this->tokenIs($tokens[$position], T_NAMESPACE)) {
+                        $end = $position - 1;
+                        break;
+                    }
+                }
+            } else {
+                $depth = 1;
+
+                for ($position = $start; $position < $count; $position++) {
+                    if ($tokens[$position] === '{') {
+                        $depth++;
+                    } elseif ($tokens[$position] === '}') {
+                        $depth--;
+
+                        if ($depth === 0) {
+                            $end = $position - 1;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            for ($position = $start; $position <= $end; $position++) {
+                $scopeIds[$position] = $scope;
+            }
+        }
+
+        return $scopeIds;
     }
 
     /**
