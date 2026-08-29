@@ -59,6 +59,7 @@ final class PhpEnvironmentScanner
             'usages' => [],
             'dynamic' => [],
         ];
+        $aliases = $this->envHelperAliases($tokens);
 
         foreach ($tokens as $index => $token) {
             if (! is_array($token)) {
@@ -66,7 +67,8 @@ final class PhpEnvironmentScanner
             }
 
             $isEnvHelper = ($token[0] === T_STRING && strtolower($token[1]) === 'env')
-                || ($token[0] === T_NAME_FULLY_QUALIFIED && strtolower($token[1]) === '\\env');
+                || ($token[0] === T_NAME_FULLY_QUALIFIED && strtolower($token[1]) === '\\env')
+                || ($token[0] === T_STRING && isset($aliases[strtolower($token[1])]));
 
             if (! $isEnvHelper) {
                 continue;
@@ -88,6 +90,75 @@ final class PhpEnvironmentScanner
         }
 
         return $result;
+    }
+
+    /**
+     * @param  array<int, array<int, mixed>|string>  $tokens
+     * @return array<string, true>
+     */
+    private function envHelperAliases(array $tokens): array
+    {
+        $aliases = [];
+        $count = count($tokens);
+
+        for ($index = 0; $index < $count; $index++) {
+            if (! $this->tokenIs($tokens[$index], T_USE)) {
+                continue;
+            }
+
+            $functionIndex = $this->nextSignificantIndex($tokens, $index);
+
+            if ($functionIndex === null || ! $this->tokenIs($tokens[$functionIndex], T_FUNCTION)) {
+                continue;
+            }
+
+            $start = $this->nextSignificantIndex($tokens, $functionIndex);
+
+            if ($start === null) {
+                continue;
+            }
+
+            $end = $this->statementEndIndex($tokens, $start);
+
+            if ($end === null) {
+                continue;
+            }
+
+            $statement = '';
+
+            for ($position = $start; $position < $end; $position++) {
+                $token = $tokens[$position];
+
+                if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                    continue;
+                }
+
+                $statement .= is_array($token) ? $token[1] : $token;
+            }
+
+            foreach ($this->splitTopLevel($statement, ',') as $import) {
+                $this->collectEnvHelperImportAlias($aliases, $import);
+            }
+
+            $index = $end;
+        }
+
+        return $aliases;
+    }
+
+    /** @param array<string, true> $aliases */
+    private function collectEnvHelperImportAlias(array &$aliases, string $import): void
+    {
+        if (! preg_match('/^\s*\\\\?([A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*$/i', $import, $matches)) {
+            return;
+        }
+
+        if (strtolower($matches[1]) !== 'env') {
+            return;
+        }
+
+        $alias = $matches[2] ?? 'env';
+        $aliases[strtolower($alias)] = true;
     }
 
     /**
