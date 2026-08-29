@@ -85,3 +85,4 @@ All notable changes to Laravel Env Guard will be documented in this file.
 [1.2.1]: https://github.com/Codegenie-BE/laravel-env-guard/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Codegenie-BE/laravel-env-guard/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Codegenie-BE/laravel-env-guard/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/Codegenie-BE/laravel-env-guard/releases/tag/v1.0.0
