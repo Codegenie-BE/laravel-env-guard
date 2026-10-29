@@ -69,7 +69,10 @@ function verifyStatuses(response) {
 }
 
 function verifyProtection(ruleset) {
-    assert(ruleset.enforcement === 'active' && ruleset.bypass_actors?.length === 0
+    // GitHub only exposes the full actor list to ruleset administrators. The
+    // per-request bypass decision is available without granting admin access.
+    assert(ruleset.enforcement === 'active' && ruleset.current_user_can_bypass === 'never'
+        && (ruleset.bypass_actors === undefined || (Array.isArray(ruleset.bypass_actors) && ruleset.bypass_actors.length === 0))
         && ruleset.conditions?.ref_name?.include?.includes('~DEFAULT_BRANCH')
         && ruleset.conditions.ref_name.exclude?.length === 0, 'Main protection changed');
     assert(ruleset.rules.some(rule => rule.type === 'pull_request')
@@ -188,5 +191,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         assert(response.ok, `GitHub ${response.status}: ${path}`);
         return response.json();
     };
-    await mergeForEvent({ api, repository, event });
+    if (process.argv[2] === '--check-protection') {
+        verifyProtection(await api('/rulesets/20992379'));
+        console.log('Verified active main protection; the Actions token cannot bypass it.');
+    } else {
+        await mergeForEvent({ api, repository, event });
+    }
 }

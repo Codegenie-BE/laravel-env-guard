@@ -34,8 +34,9 @@ It fetches evidence through GitHub APIs and requires:
   must pass; skipped/missing jobs and newer failed/in-progress attempts block merging.
 - Successful Renovate internal statuses, no requested changes or unresolved review threads,
   and no `hold` or `do-not-merge` label. Incomplete API responses block merging.
-- The existing active `Protect main` ruleset (ID `20992379`), with no bypass actors,
-  strict required `CI gate` from GitHub Actions and linear history.
+- The existing active `Protect main` ruleset (ID `20992379`), strict required `CI gate`
+  from GitHub Actions and linear history. The API must explicitly report that the
+  executing token can never bypass it (`current_user_can_bypass: never`).
 
 The gate calls GitHub's PR merge API with `merge_method: squash` and the verified head
 `sha`. It never updates Git refs directly or bypasses protection. If the head or main
@@ -62,8 +63,11 @@ and tested. Changes to the CI matrix must update the trusted gate's expected evi
    creates them. Keep Dependency Graph and Dependabot alerts enabled for detection.
 4. In Actions settings, keep GitHub-created Actions, full-SHA enforcement and
    `shivammathur/setup-php@*` allowed; remove `dependabot/fetch-metadata@*`.
-5. Preserve `Protect main`, including its strict required `CI gate`. No extra bypass or
-   approval permission is needed. No deployment or package release is part of this migration.
+5. Preserve `Protect main`, including its empty bypass list and strict required `CI gate`.
+   The ordinary workflow token cannot audit the full admin-only bypass list: the runtime
+   gate verifies its own non-bypass permission instead and checks the list too if returned.
+   No admin token, extra bypass or approval permission is needed. No deployment or package
+   release is part of this migration.
 6. Trigger a Mend scan after integration. Confirm the Dependency Dashboard and Composer /
    GitHub Actions extraction, check the job log and confirm only Renovate opens new updates.
    Activation is not complete until those observations are confirmed.

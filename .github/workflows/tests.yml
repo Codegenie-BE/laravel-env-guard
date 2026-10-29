@@ -91,6 +91,11 @@ jobs:
       - name: Test dependency automation
         run: node --test .github/scripts/*.test.mjs
 
+      - name: Verify main protection
+        run: node .github/scripts/merge-dependencies.mjs --check-protection
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   proposed-dependencies:
     name: Proposed dependencies / ${{ matrix.name }}
     needs: plan

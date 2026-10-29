@@ -47,7 +47,8 @@ function fixture() {
         if (path === '/graphql') return { data: { repository: { pullRequest: { reviewThreads: state.threads } } } };
         if (path === `/commits/${sha}/status?per_page=100`) return state.statuses;
         if (path === `/compare/${base}...${sha}`) return { ahead_by: 1, behind_by: state.behind ? 1 : 0 };
-        if (path === '/rulesets/20992379') return { enforcement: state.unprotected ? 'disabled' : 'active', bypass_actors: [], conditions: { ref_name: { include: ['~DEFAULT_BRANCH'], exclude: [] } }, rules: [{ type: 'pull_request' }, { type: 'required_linear_history' }, { type: 'required_status_checks', parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: 'CI gate', integration_id: 15368 }] } }] };
+        // Ordinary Actions tokens cannot administer rulesets; bypass_actors is omitted.
+        if (path === '/rulesets/20992379') return { enforcement: state.unprotected ? 'disabled' : 'active', ...(state.omitBypass ? {} : { current_user_can_bypass: state.bypass ?? 'never' }), conditions: { ref_name: { include: ['~DEFAULT_BRANCH'], exclude: [] } }, rules: [{ type: 'pull_request' }, { type: 'required_linear_history' }, { type: 'required_status_checks', parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: 'CI gate', integration_id: 15368 }] } }] };
         if (path.startsWith('/contents/composer.json?ref=')) return content(manifest);
         if (path.startsWith('/contents/.github/workflows/tests.yml?ref=')) return { encoding: 'base64', content: Buffer.from(path.endsWith(base) ? state.before : state.after).toString('base64') };
         for (const workflow of ['tests', 'distribution']) {
@@ -93,6 +94,11 @@ for (const [name, mutate] of [
     ['unresolved conversation', s => { s.threads = { totalCount: 1, nodes: [{ isResolved: false }], pageInfo: { hasNextPage: false } }; }],
     ['incomplete review conversations', s => { s.threads.pageInfo.hasNextPage = true; }],
     ['disabled strict branch protection', s => { s.unprotected = true; }],
+    ['token with bypass permission', s => { s.bypass = 'always'; }],
+    ['token with pull-request bypass permission', s => { s.bypass = 'pull_requests_only'; }],
+    ['token with exempt bypass permission', s => { s.bypass = 'exempt'; }],
+    ['unknown token bypass permission', s => { s.bypass = 'unknown'; }],
+    ['missing token bypass information', s => { s.omitBypass = true; }],
     ['blocked mergeability', s => { s.pr.mergeable_state = 'blocked'; }],
     ['failed Distribution', s => { s.runs.distribution.conclusion = 'failure'; }],
     ['skipped proposed dependency tests', s => { s.jobs.find(j => j.name.startsWith('Proposed')).conclusion = 'skipped'; }],
