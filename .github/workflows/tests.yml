@@ -27,6 +27,7 @@ jobs:
 
     outputs:
       full: ${{ steps.changes.outputs.full }}
+      proposed: ${{ steps.proposed.outputs.proposed }}
 
     steps:
       - name: Checkout
@@ -70,6 +71,60 @@ jobs:
 
           echo "full=$full" >> "$GITHUB_OUTPUT"
           echo "full=$full"
+
+      - name: Plan proposed dependency scenarios
+        id: proposed
+        run: node .github/scripts/proposed-dependencies.mjs plan
+        env:
+          PLAN_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+
+  dependency-automation:
+    name: Dependency automation
+    needs: plan
+    if: needs.plan.outputs.full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Test dependency automation
+        run: node --test .github/scripts/*.test.mjs
+
+  proposed-dependencies:
+    name: Proposed dependencies / ${{ matrix.name }}
+    needs: plan
+    if: needs.plan.outputs.full == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.plan.outputs.proposed) }}
+    env:
+      COMPOSER_CACHE_DIR: ${{ github.workspace }}/../.composer-cache
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+          extensions: fileinfo, tokenizer
+
+      - name: Select proposed dependency range
+        run: node .github/scripts/proposed-dependencies.mjs select
+        env:
+          DEPENDENCY_SCENARIO: ${{ toJSON(matrix) }}
+
+      - name: Install proposed dependencies
+        run: composer update --prefer-stable --prefer-dist --with-all-dependencies --no-interaction --no-progress
+
+      - name: Test proposed dependencies
+        run: composer check:all
 
   quality:
     name: Quality / Linux x64 / PHP 8.5 / Laravel 13
@@ -402,6 +457,8 @@ jobs:
       - portability
       - dependency-review
       - coverage
+      - dependency-automation
+      - proposed-dependencies
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":enableVulnerabilityAlerts"],
+  "enabledManagers": ["composer", "github-actions"],
+  "timezone": "Europe/Brussels",
+  "schedule": ["* * * * 1"],
+  "dependencyDashboard": true,
+  "dependencyDashboardApproval": false,
+  "prCreation": "immediate",
+  "prConcurrentLimit": 2,
+  "branchConcurrentLimit": 2,
+  "prHourlyLimit": 2,
+  "rebaseWhen": "behind-base-branch",
+  "ignoreUnstable": true,
+  "internalChecksFilter": "strict",
+  "minimumReleaseAge": "7 days",
+  "automerge": false,
+  "platformAutomerge": false,
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "minimumReleaseAge": "0 days",
+    "dependencyDashboardApproval": false,
+    "groupName": null
+  },
+  "packageRules": [
+    {
+      "description": "Preserve library compatibility when proposing newer Composer releases.",
+      "matchManagers": ["composer"],
+      "rangeStrategy": "widen"
+    },
+    {
+      "matchManagers": ["composer"],
+      "matchDepTypes": ["require"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "Composer production non-major dependencies"
+    },
+    {
+      "matchManagers": ["composer"],
+      "matchDepTypes": ["require-dev"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "Composer development non-major dependencies"
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "groupName": null,
+      "minimumReleaseAge": "14 days"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch", "minor", "pin", "pinDigest", "digest"],
+      "groupName": "CI non-major dependencies"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "pinDigests": true
+    }
+  ]
+}
