@@ -273,13 +273,13 @@ final class TextEnvironmentScanner
                 }
 
                 if ($character === '[') {
-                    $stack[$stateIndex]['character_class'] = true;
+                    $stack[$stateIndex] = [...$state, 'character_class' => true];
 
                     continue;
                 }
 
                 if ($character === ']') {
-                    $stack[$stateIndex]['character_class'] = false;
+                    $stack[$stateIndex] = [...$state, 'character_class' => false];
 
                     continue;
                 }
@@ -369,10 +369,10 @@ final class TextEnvironmentScanner
 
             if ($templateDepth !== null) {
                 if ($character === '{') {
-                    $stack[$stateIndex]['template_depth'] = $templateDepth + 1;
+                    $stack[$stateIndex] = [...$state, 'template_depth' => $templateDepth + 1];
                 } elseif ($character === '}') {
                     $templateDepth--;
-                    $stack[$stateIndex]['template_depth'] = $templateDepth;
+                    $stack[$stateIndex] = [...$state, 'template_depth' => $templateDepth];
 
                     if ($templateDepth === 0) {
                         $this->maskByte($masked, $index);

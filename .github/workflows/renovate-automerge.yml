@@ -1,0 +1,44 @@
+name: Renovate verified merge
+
+on:
+  workflow_run:
+    workflows: [Tests, Distribution]
+    types: [completed]
+  status:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate-verified-merge-main
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    if: >-
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'pull_request' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        startsWith(github.event.workflow_run.head_branch, 'renovate/')) ||
+      (github.event_name == 'status' && github.event.state == 'success' &&
+        startsWith(github.event.context, 'renovate/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+      statuses: read
+    steps:
+      # Only trusted main code runs with write permission. Never execute PR artifacts.
+      - name: Checkout trusted merge gate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Verify evidence and squash-merge
+        run: node .github/scripts/merge-dependencies.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
